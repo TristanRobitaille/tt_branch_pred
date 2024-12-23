@@ -1,0 +1,10 @@
+Docker (from root):
+-Build Docker: `docker build -t tt_brand_predictor .`
+-Run Docker: `docker run -it -v `pwd`:/tmp tt_brand_predictor`
+
+Functional simulation (from ./func_sim):
+-Compile reference: `riscv32-unknown-elf-gcc -O0 reference.c -o reference`
+-Disassemble reference: `riscv32-unknown-elf-objdump -d reference > reference_dis.txt`
+-Make Makefile: `cmake CMakeLists.txt`
+-Compile functional simulation: `make`
+-Run: `./build/func_sim ./reference`

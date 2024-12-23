@@ -9,3 +9,15 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+
+# RISC-V toolchain
+riscv-gnu-toolchain/
+
+# Functional sim
+func_sim/reference
+func_sim/reference_dis.txt
+func_sim/build/
+func_sim/CMakeFiles/
+func_sim/CMakeCache.txt
+func_sim/Makefile
+func_sim/cmake_install.cmake
