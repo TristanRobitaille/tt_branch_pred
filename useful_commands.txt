@@ -8,4 +8,4 @@ Functional simulation (from ./func_sim):
 -Run Spike on reference: `spike --log=spike_log.txt --log-commits --isa=rv32i_zicsr_zifencei --priv=m -m128 reference`
 -Make Makefile: `cmake CMakeLists.txt`
 -Compile functional simulation: `make`
--Run: `./build/func_sim ./reference`
+-Run: `./build/func_sim ./spike_log.txt`
