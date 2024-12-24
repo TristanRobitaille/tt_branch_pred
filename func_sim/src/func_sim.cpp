@@ -63,17 +63,17 @@ BranchPredictor::BranchPredictor() : perceptrons(NUM_PERCEPTRONS), global_histor
     }
 }
 
-uint32_t BranchPredictor::pc_hash(uint32_t pc) {
-    return pc % NUM_PERCEPTRONS;
+uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
+    return (branch_address >> 2) % NUM_PERCEPTRONS;
 }
 
-bool BranchPredictor::predict(uint32_t pc) {
-    uint32_t index = pc_hash(pc);
+bool BranchPredictor::predict(uint32_t branch_address) {
+    uint32_t index = branch_address_hash(branch_address);
     return perceptrons[index].predict(global_history);
 }
 
-void BranchPredictor::update(uint32_t pc, bool branch_direction) {
-    uint32_t index = pc_hash(pc);
+void BranchPredictor::update(uint32_t branch_address, bool branch_direction) {
+    uint32_t index = branch_address_hash(branch_address);
     perceptrons[index].update(branch_direction, global_history);
 
     // Updates the global history by shifting it and inserting the latest branch outcome.
@@ -90,6 +90,7 @@ int main(int argc, char** argv) {
     }
 
     cout << "NUM_PERCEPTRONS: " << NUM_PERCEPTRONS << endl;
+    cout << "STORAGE_PER_PERCEPTRON: " << STORAGE_PER_PERCEPTRON << endl;
 
     if (argc != 2) {
         printf("Usage: %s <file.txt>\n", argv[0]);
@@ -108,11 +109,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Define a regex pattern to match the PC and instruction
+    // Define a regex pattern to match the branch address and instruction
     regex pattern(R"(core\s+\d+:\s+\d+\s+(0x[0-9a-fA-F]+)\s+\((0x[0-9a-fA-F]+)\))");
     smatch matches;
 
-    vector<uint32_t> pcs; // Store PCs to determine branch outcomes
+    vector<uint32_t> branch_addresses; // Store branch addresses to determine branch outcomes
     vector<uint32_t> instructions; // Store instructions for B-type check
 
     // Read and parse each line from the file
@@ -120,9 +121,9 @@ int main(int argc, char** argv) {
     while (getline(file, line)) {
         if (regex_search(line, matches, pattern)) {
             if (matches.size() == 3) { // Ensure we have two capture groups
-                uint32_t pc = stoul(matches[1].str(), nullptr, 16);
+                uint32_t branch_addr = stoul(matches[1].str(), nullptr, 16);
                 uint32_t instruction = stoul(matches[2].str(), nullptr, 16);
-                pcs.push_back(pc);
+                branch_addresses.push_back(branch_addr);
                 instructions.push_back(instruction);
             }
         }
@@ -130,25 +131,25 @@ int main(int argc, char** argv) {
     file.close();
 
     // Determine branch outcomes and use the branch predictor
-    for (size_t i = 0; i < pcs.size() - 1; ++i) {
-        uint32_t current_pc = pcs[i];
-        uint32_t next_pc = pcs[i + 1];
+    for (size_t i = 0; i < branch_addresses.size() - 1; ++i) {
+        uint32_t current_branch_addr = branch_addresses[i];
+        uint32_t next_branch_addr = branch_addresses[i + 1];
         uint32_t instruction = instructions[i];
 
         // Check if the instruction is a B-type instruction
         if ((instruction & B_TYPE_INST_MASK) == B_TYPE_OPCODE) {
-            bool branch_taken = (next_pc != current_pc + 4); // Branch taken if next PC is not current PC + 4
+            bool branch_taken = (next_branch_addr != current_branch_addr + 4); // Branch taken if next address is not current address + 4
 
             // Predict branch direction
-            bool prediction = branch_predictor.predict(current_pc);
+            bool prediction = branch_predictor.predict(current_branch_addr);
 
             // Update the branch predictor with the actual outcome
-            branch_predictor.update(current_pc, branch_taken);
+            branch_predictor.update(current_branch_addr, branch_taken);
 
-            cout << "PC: " << hex << current_pc 
-                      << ", B-Type Instruction: " << hex << instruction 
-                      << ", Branch Taken: " << boolalpha << branch_taken 
-                      << ", Prediction: " << prediction << endl;
+            cout << "Branch address: " << hex << current_branch_addr 
+                 << ", B-Type Instruction: " << hex << instruction 
+                 << ", Branch Taken: " << boolalpha << branch_taken 
+                 << ", Prediction: " << prediction << endl;
 
             total_branches++;
             if (branch_taken == prediction) {

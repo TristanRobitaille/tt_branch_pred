@@ -15,11 +15,11 @@
 
 // Branch predictor
 #define HISTORY_LENGTH 4
-#define TRAINING_THRESHOLD 5
+#define TRAINING_THRESHOLD 2
 #define BIT_WIDTH_WEIGHTS 4 // Must be 2, 4 or 8 so that we can store it in one byte
-#define BIT_WIDTH_Y 10
+#define BIT_WIDTH_Y 9
 
-#define STORAGE_B 64
+#define STORAGE_B 128
 #define STORAGE_PER_PERCEPTRON (HISTORY_LENGTH * BIT_WIDTH_WEIGHTS)
 #define NUM_PERCEPTRONS (int)floor(STORAGE_B / STORAGE_PER_PERCEPTRON) 
 
@@ -43,10 +43,10 @@ class Perceptron {
 class BranchPredictor {
     public:
         BranchPredictor();
-        void update(uint32_t pc, bool branch_direction);
-        bool predict(uint32_t pc);
+        void update(uint32_t branch_address, bool branch_direction);
+        bool predict(uint32_t branch_address);
     private:
-        uint32_t pc_hash(uint32_t pc);
+        uint32_t branch_address_hash(uint32_t branch_address);
         std::vector<Perceptron> perceptrons;
         std::vector<bool> global_history;
 };
