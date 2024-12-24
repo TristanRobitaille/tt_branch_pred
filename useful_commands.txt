@@ -3,8 +3,9 @@ Docker (from root):
 -Run Docker: `docker run -it -v `pwd`:/tmp tt_brand_predictor`
 
 Functional simulation (from ./func_sim):
--Compile reference: `riscv32-unknown-elf-gcc -O0 reference.c -o reference`
+-Compile reference: `riscv32-unknown-elf-gcc -O0 start.S reference.c -o reference -march=rv32i_zicsr_zifencei -T link.ld -nostartfiles -nostdlib`
 -Disassemble reference: `riscv32-unknown-elf-objdump -d reference > reference_dis.txt`
+-Run Spike on reference: `spike --log=spike_log.txt --log-commits --isa=rv32i_zicsr_zifencei --priv=m -m128 reference`
 -Make Makefile: `cmake CMakeLists.txt`
 -Compile functional simulation: `make`
 -Run: `./build/func_sim ./reference`

@@ -12,6 +12,8 @@ test/gate_level_netlist.v
 
 # RISC-V toolchain
 riscv-gnu-toolchain/
+riscv-isa-sim/
+riscv-pk/
 
 # Functional sim
 func_sim/reference
@@ -21,3 +23,4 @@ func_sim/CMakeFiles/
 func_sim/CMakeCache.txt
 func_sim/Makefile
 func_sim/cmake_install.cmake
+func_sim/spike_log.txt
