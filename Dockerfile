@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-dev \
     libslirp-dev \
     device-tree-compiler && \
+    iverilog && \
     rm -rf /var/lib/apt/lists/*
 
 #----- Build RISC-V toolchain -----#
@@ -67,6 +68,11 @@ RUN git clone https://github.com/riscv-software-src/riscv-pk.git && \
 
 RUN echo 'export PATH=/opt/riscv_pk/riscv32-unknown-elf/riscv32-unknown-elf/bin:$PATH' >> ~/.bashrc && \
     . ~/.bashrc
+
+#----- Python -----#
+COPY test/requirements.txt .
+RUN pip3 install --upgrade -r requirements.txt
+RUN rm requirements.txt
 
 # Clean up
 WORKDIR /tmp
