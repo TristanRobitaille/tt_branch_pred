@@ -7,12 +7,14 @@
 
 module tt_um_branch_pred #(
     parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16,
-    parameter HISTORY_LENGTH = 16,
+    parameter HISTORY_LENGTH = 15, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
-    parameter STORAGE_B = 128, // Ensure this is a multiple of STORAGE_PER_PERCEPTRON. If larger than 2^7, will need to modify memory since max. address is 7 bits
-    parameter STORAGE_PER_PERCEPTRON = (HISTORY_LENGTH * BIT_WIDTH_WEIGHTS),
-    parameter NUM_PERCEPTRONS = (STORAGE_B / STORAGE_PER_PERCEPTRON),
-    parameter PERCEPTRON_INDEX_WIDTH = $clog2(NUM_PERCEPTRONS) // Must be wide enough to store NUM_PERCEPTRONS
+    parameter STORAGE_B_PER_MEM = 64, // If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter MEM_ADDR_WIDTH = $clog2(STORAGE_B_PER_MEM),
+    parameter STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS),
+    parameter NUM_PERCEPTRONS = (8 * 2 * STORAGE_B_PER_MEM / STORAGE_PER_PERCEPTRON),
+    parameter PERCEPTRON_INDEX_WIDTH = $clog2(NUM_PERCEPTRONS), // Must be wide enough to store NUM_PERCEPTRONS
+    parameter SUM_WIDTH = $clog2(HISTORY_LENGTH * (1 << (BIT_WIDTH_WEIGHTS-1)))
 )(
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
@@ -39,6 +41,8 @@ module tt_um_branch_pred #(
 
     assign uo_out[0] = direction_ground_truth;
     assign uo_out[1] = data_input_done;
+    assign uo_out[2] = pred_ready;
+    assign uo_out[3] = prediction;
 
     // List all unused inputs to prevent warnings
     wire _unused = &{ena, clk, rst_n, 1'b0};
@@ -62,16 +66,38 @@ module tt_um_branch_pred #(
     //---------------------------------
     //           PREDICTOR 
     //---------------------------------
-    reg perceptron_index[PERCEPTRON_INDEX_WIDTH-1:0];
+    /*
+        The prediction is given by
+        
+        The starting index (byte) of the weights for a perceptron is given by: (HISTORY_LENGTH + 1) * perceptron_index * (BIT_WIDTH_WEIGHTS/8)
+    */
+
+    reg wr_en; // 0: Read, 1: Write
+    reg prediction, pred_ready;
     reg [1:0] state_pred;
-    // parameter IDLE = 2'b00, COMPUTING = 2'b01;, 
+    reg [7:0] mem_data_in_lsb, mem_data_out_lsb, mem_data_in_msb, mem_data_out_msb;
+    reg [$clog2(HISTORY_LENGTH+1+1)-1:0] computing_cnt;
+    reg [SUM_WIDTH-1:0] sum;
+    reg [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
+    reg [HISTORY_LENGTH-1:0] history_buffer;
+    reg [MEM_ADDR_WIDTH-1:0] mem_addr;
+    parameter IDLE = 2'b00, COMPUTING = 2'b01; 
 
     tt_um_MichaelBell_latch_mem #(
-        .RAM_BYTES(STORAGE_B)
-    ) latch_mem (
-        .ui_in(),  // [wr_en|x|addr]
-        .uo_out(), // Data output (8b)
-        .uio_in(), // Data input (8b)
+        .RAM_BYTES(STORAGE_B_PER_MEM)
+    ) latch_mem_lsb (
+        .ui_in({wr_en, {(7-MEM_ADDR_WIDTH){1'b0}}, mem_addr}), // [wr_en|padding|addr]
+        .uo_out(mem_data_out_lsb), // Data output (8b)
+        .uio_in(mem_data_in_lsb),  // Data input (8b)
+        .ena(ena), .clk(clk), .rst_n(rst_n)
+    );
+
+    tt_um_MichaelBell_latch_mem #(
+        .RAM_BYTES(STORAGE_B_PER_MEM)
+    ) latch_mem_msb (
+        .ui_in({wr_en, {(7-MEM_ADDR_WIDTH){1'b0}}, mem_addr}), // [wr_en|padding|addr]
+        .uo_out(mem_data_out_msb), // Data output (8b)
+        .uio_in(mem_data_in_msb),  // Data input (8b)
         .ena(ena), .clk(clk), .rst_n(rst_n)
     );
 
@@ -79,25 +105,44 @@ module tt_um_branch_pred #(
         perceptron_index = inst_addr[PERCEPTRON_INDEX_WIDTH-1 + 2 : 2]; // Implements (inst_addr >> 2) % NUM_PERCEPTRONS
     end
 
-    // always @ (posedge clk) begin
-    //     if (!rst_n) begin
-        
-    //     end else begin
-    //         case (state)
-    //             IDLE: begin
-    //                 if (data_input_done) begin
-    //                     state <= COMPUTING;
-    //                 end
-    //             end
-    //             COMPUTING: begin
+    always @ (posedge clk) begin
+        if (data_input_done) begin
+            history_buffer <= {history_buffer[HISTORY_LENGTH-2:0], direction_ground_truth};
+        end
+    end
 
-    //             end
-    //             xxx: begin
-    //             end
-    //             default:
-    //                 state <= IDLE;
-    //         endcase
-    //     end
-    // end
+    always @ (posedge clk) begin
+        if (!rst_n) begin
+        
+        end else begin
+            case (state_pred)
+                IDLE: begin
+                    wr_en <= 1'b0; // Read
+                    pred_ready <= 1'b0;
+                    computing_cnt <= 'd0;
+                    if (data_input_done) begin
+                        state_pred <= COMPUTING;
+                        mem_addr <= (perceptron_index << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
+                    end
+                end
+                COMPUTING: begin
+                    mem_addr <= mem_addr + 1;
+                    if (computing_cnt == 'd1) begin // Skip 0 because there is a delay getting SRAM data
+                        sum <= {mem_data_out_msb, mem_data_out_lsb};
+                    end else if (computing_cnt < HISTORY_LENGTH+2) begin
+                        if (history_buffer[computing_cnt-2]) begin
+                            sum <= sum + {mem_data_out_msb, mem_data_out_lsb};
+                        end
+                    end else begin
+                        state_pred <= IDLE;
+                        prediction <= sum[SUM_WIDTH-1]; // Equivalent to (sum >= 0)
+                        pred_ready <= 1'b1;
+                    end
+                end
+                default:
+                    state_pred <= IDLE;
+            endcase
+        end
+    end
 
 endmodule

@@ -14,18 +14,18 @@
 #define B_TYPE_OPCODE 0b1100011
 
 // Branch predictor
-#define HISTORY_LENGTH 4
-#define TRAINING_THRESHOLD 2
-#define BIT_WIDTH_WEIGHTS 4 // Must be 2, 4 or 8 so that we can store it in one byte
-#define BIT_WIDTH_Y 9
+#define HISTORY_LENGTH 15 // Must be power of 2 - 1
+#define TRAINING_THRESHOLD 14 + 2*HISTORY_LENGTH
+#define BIT_WIDTH_WEIGHTS 16 // Must be 2, 4 or 8 so that we can store it in one byte
+#define BIT_WIDTH_Y (int)ceil(log2(HISTORY_LENGTH * (1 << (BIT_WIDTH_WEIGHTS-1))))
 
 #define STORAGE_B 128
-#define STORAGE_PER_PERCEPTRON (HISTORY_LENGTH * BIT_WIDTH_WEIGHTS)
-#define NUM_PERCEPTRONS (int)floor(STORAGE_B / STORAGE_PER_PERCEPTRON) 
+#define STORAGE_PER_PERCEPTRON ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
+#define NUM_PERCEPTRONS (int)floor(8 * STORAGE_B / STORAGE_PER_PERCEPTRON) 
 
 // Utilities
-#define Y_MAX ((1 << (BIT_WIDTH_Y - 1)) - 1)
-#define WEIGHT_MAX ((1 << (BIT_WIDTH_WEIGHTS - 1)) - 1)
+#define Y_MAX                    ((1 << (BIT_WIDTH_Y - 1)) - 1)
+#define WEIGHT_MAX               ((1 << (BIT_WIDTH_WEIGHTS - 1)) - 1)
 #define CHECK_OVERFLOW_Y(x)      ((x) > Y_MAX || (x) < (-Y_MAX - 1))
 #define CHECK_OVERFLOW_WEIGHT(x) ((x) > WEIGHT_MAX || (x) < (-WEIGHT_MAX - 1))
 
@@ -37,7 +37,7 @@ class Perceptron {
         bool predict(const std::vector<bool>& global_history);
         void reset();
     private:
-        std::vector<int8_t> weights;
+        std::vector<int> weights;
 };
 
 class BranchPredictor {

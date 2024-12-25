@@ -1,0 +1,15 @@
+{signal: [
+  {name: 'clk',  	  		 wave: 'p...|...............'},
+  {name: 'sclk', 	  		 wave: 'lh.l|h.l.h.l.h.l.h.l'},
+  {name: 'cs', 	 	  		 wave: 'hl..|....h..........'},
+  {name: 'mosi', 	  		 wave: 'l3..|........4.x....', data: ['data', 'branch dir.']},
+  {},
+  
+  {name: 'inst_addr', 		 wave: 'x.9.|.....7.........', data: ['data', 'data OK']},
+  {name: 'dir_ground_truth', wave: 'x...|.........7.....', data: ['branch dir.']},
+  {name: 'data_input_done',  wave: 'l...|..........hl...'},
+  {},
+  
+  {name: 'perceptron_index', wave: 'x.9.|.....7.........', data: ['index', 'index OK']},
+  {name: 'history_buffer',   wave: 'x...|...........7...', data: ['dir. bit latched']},
+]}

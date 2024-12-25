@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Tue Dec 24 21:18:03 2024
+[*] Wed Dec 25 14:03:42 2024
 [*]
 [dumpfile] "/Users/tristan/Developer/tt_branch_pred/test/tb.vcd"
-[dumpfile_mtime] "Tue Dec 24 21:17:31 2024"
-[dumpfile_size] 17264
+[dumpfile_mtime] "Wed Dec 25 14:03:35 2024"
+[dumpfile_size] 711441
 [savefile] "/Users/tristan/Developer/tt_branch_pred/test/tb.gtkw"
-[timestart] 21460000
-[size] 1512 916
+[timestart] 0
+[size] 3440 1387
 [pos] -1 -1
-*-22.199999 45000002 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+*-23.400000 45600000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 [markername] AA
 [markername] BB
 [markername] CC
@@ -39,9 +39,9 @@
 [treeopen] tb.
 [treeopen] tb.branch_pred.
 [sst_width] 253
-[signals_width] 210
+[signals_width] 263
 [sst_expanded] 1
-[sst_vpaned_height] 416
+[sst_vpaned_height] 237
 @28
 tb.clk
 @200
@@ -52,10 +52,21 @@ tb.branch_pred.spi_inst.sclk
 tb.branch_pred.spi_inst.cs
 tb.branch_pred.spi_inst.mosi
 tb.branch_pred.spi_inst.state[1:0]
-@22
+@23
 tb.branch_pred.spi_inst.inst_addr[15:0]
 @28
 tb.branch_pred.spi_inst.data_input_done
 tb.branch_pred.spi_inst.direction_ground_truth
+@200
+-Perceptron
+@c00022
+tb.branch_pred.perceptron_index[1:0]
+@28
+(0)tb.branch_pred.perceptron_index[1:0]
+(1)tb.branch_pred.perceptron_index[1:0]
+@1401200
+-group_end
+@22
+tb.branch_pred.history_buffer[7:0]
 [pattern_trace] 1
 [pattern_trace] 0

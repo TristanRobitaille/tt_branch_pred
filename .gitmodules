@@ -1,3 +1,6 @@
 [submodule "src/tt06-memory"]
 	path = src/tt06-memory
 	url = https://github.com/MichaelBell/tt06-memory.git
+[submodule "wavedrom"]
+	path = wavedrom
+	url = https://github.com/wavedrom/wavedrom.git

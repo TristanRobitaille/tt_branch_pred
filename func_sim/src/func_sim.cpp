@@ -3,22 +3,22 @@
 using namespace std;
 
 /*----- PERCEPTRON -----*/
-Perceptron::Perceptron() : weights(HISTORY_LENGTH, 0) { }
+Perceptron::Perceptron() : weights(HISTORY_LENGTH+1, 0) { }
 
 void Perceptron::reset() {
     fill(weights.begin(), weights.end(), 0);
 }
 
 bool Perceptron::predict(const std::vector<bool>& global_history) {
-    int32_t y = 0;
+    int32_t y = weights[0];
 
     // Compute the weighted sum of the global history values.
-    for (size_t i = 0; i < HISTORY_LENGTH; i++) {
-        y = weights[i] * global_history[i];
+    for (size_t i = 1; i < HISTORY_LENGTH+1; i++) {
+        y += weights[i] * global_history[i];
         
         // Check for overflow in y and wrap around if necessary (to simulate hardware)
         if (CHECK_OVERFLOW_Y(y)) {
-            cout << "Overflow in y: " << (int)y << endl;
+            cout << "Overflow in y: " << dec << (int)y << endl;
             if (y > 0) {
                 int32_t overflow_amount = y - Y_MAX;
                 y = (-Y_MAX - 1) + (overflow_amount - 1);
@@ -42,7 +42,7 @@ void Perceptron::update(bool branch_direction, const vector<bool>& global_histor
        
             // Check for overflow in weight and wrap around if necessary (to simulate hardware)
             if (CHECK_OVERFLOW_WEIGHT(weights[i])) {
-                cout << "Overflow in weight: " << (int)weights[i] << endl;
+                cout << "Overflow in weight: " << dec << (int)weights[i] << endl;
                 if (weights[i] > 0) {
                     int32_t overflow_amount = weights[i] - WEIGHT_MAX;
                     weights[i] = (-WEIGHT_MAX - 1) + (overflow_amount - 1);
@@ -84,13 +84,14 @@ void BranchPredictor::update(uint32_t branch_address, bool branch_direction) {
 }
 
 int main(int argc, char** argv) {
-    if (BIT_WIDTH_WEIGHTS != 2 && BIT_WIDTH_WEIGHTS != 4 && BIT_WIDTH_WEIGHTS != 8) {
+    if (BIT_WIDTH_WEIGHTS != 2 && BIT_WIDTH_WEIGHTS != 4 && BIT_WIDTH_WEIGHTS != 8 && BIT_WIDTH_WEIGHTS != 16) {
         cerr << "BIT_WIDTH_WEIGHTS must be 2, 4 or 8" << endl;
         return 1;
     }
 
     cout << "NUM_PERCEPTRONS: " << NUM_PERCEPTRONS << endl;
     cout << "STORAGE_PER_PERCEPTRON: " << STORAGE_PER_PERCEPTRON << endl;
+    cout << "WEIGHT_MAX: " << WEIGHT_MAX << endl;
 
     if (argc != 2) {
         printf("Usage: %s <file.txt>\n", argv[0]);

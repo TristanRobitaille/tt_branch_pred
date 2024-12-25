@@ -31,6 +31,12 @@ jobs:
           # make will return success even if the test fails, so check for failure in the results.xml
           ! grep failure results.xml
 
+      - name: Test Summary
+        uses: test-summary/action@v2.3
+        with:
+          paths: "test/results.xml"
+        if: always()
+
       - name: Run memory tests
         run: |
           cd ../tt06-memory/test
@@ -39,10 +45,10 @@ jobs:
           # make will return success even if the test fails, so check for failure in the results.xml
           ! grep failure results.xml
 
-      - name: Test Summary
+      - name: Memory Test Summary
         uses: test-summary/action@v2.3
         with:
-          paths: "test/results.xml"
+          paths: "../tt06-memory/test/results.xml"
         if: always()
 
       - name: upload vcd
