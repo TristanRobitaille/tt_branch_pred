@@ -9,7 +9,7 @@ void Perceptron::reset() {
     fill(weights.begin(), weights.end(), 0);
 }
 
-bool Perceptron::predict(const std::vector<bool>& global_history) {
+void Perceptron::predict(const std::vector<bool>& global_history, bool* pred, int* y_sum) {
     int32_t y = weights[0];
 
     // Compute the weighted sum of the global history values.
@@ -28,18 +28,21 @@ bool Perceptron::predict(const std::vector<bool>& global_history) {
             }
         }
     }
-    return (y >= 0); // Taken if greater than or equal to 0
+    *pred = (y >= 0); // Taken if greater than or equal to 0
+    *y_sum = y;
 }
 
 void Perceptron::update(bool branch_direction, const vector<bool>& global_history) {
-    int8_t y = predict(global_history);
+    bool pred = false;
+    int y = 0;
+    predict(global_history, &pred, &y);
 
-    // If the prediction is incorrect or the absolute value of the weighted sum (y; "confidence") is
+    // If the prediction is incorrect or the absolut e value of the weighted sum (y; "confidence") is
     // less than or equal to the threshold, adjust the weights.
-    if (y != branch_direction || abs(y) <= TRAINING_THRESHOLD) {
-        for (size_t i = 0; i < HISTORY_LENGTH; i++) {
-            weights[i] += branch_direction ? 1 : -1;
-       
+    if (pred != branch_direction || abs(y) <= TRAINING_THRESHOLD) {
+        for (size_t i = 0; i < HISTORY_LENGTH+1; i++) {
+            weights[i] += global_history[i] ? 1 : -1;
+            
             // Check for overflow in weight and wrap around if necessary (to simulate hardware)
             if (CHECK_OVERFLOW_WEIGHT(weights[i])) {
                 cout << "Overflow in weight: " << dec << (int)weights[i] << endl;
@@ -56,6 +59,10 @@ void Perceptron::update(bool branch_direction, const vector<bool>& global_histor
     }
 }
 
+vector<int> Perceptron::get_weights() {
+    return weights;
+}
+
 /*----- BRANCH PREDICTOR -----*/
 BranchPredictor::BranchPredictor() : perceptrons(NUM_PERCEPTRONS), global_history(HISTORY_LENGTH, false) {
     for (auto& perceptron : perceptrons) {
@@ -67,9 +74,10 @@ uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
     return (branch_address >> 2) % NUM_PERCEPTRONS;
 }
 
-bool BranchPredictor::predict(uint32_t branch_address) {
+void BranchPredictor::predict(uint32_t branch_address, bool* pred, int* y_sum, int* hash_index) {
     uint32_t index = branch_address_hash(branch_address);
-    return perceptrons[index].predict(global_history);
+    *hash_index = index;
+    perceptrons[index].predict(global_history, pred, y_sum);
 }
 
 void BranchPredictor::update(uint32_t branch_address, bool branch_direction) {
@@ -81,6 +89,15 @@ void BranchPredictor::update(uint32_t branch_address, bool branch_direction) {
         global_history[i] = global_history[i - 1];
     }
     global_history[0] = branch_direction;
+}
+
+string BranchPredictor::get_perceptron_weights(int index) {
+    string weights = "";
+    vector<int> perceptron_weights = perceptrons[index].get_weights();
+    for (size_t i = 0; i < HISTORY_LENGTH+1; i++) {
+        weights += to_string(perceptron_weights[i]) + ", ";
+    }
+    return weights;
 }
 
 int main(int argc, char** argv) {
@@ -142,15 +159,23 @@ int main(int argc, char** argv) {
             bool branch_taken = (next_branch_addr != current_branch_addr + 4); // Branch taken if next address is not current address + 4
 
             // Predict branch direction
-            bool prediction = branch_predictor.predict(current_branch_addr);
+            bool prediction = false;
+            int y = 0;
+            int hash_index;
+            branch_predictor.predict(current_branch_addr, &prediction, &y, &hash_index);
 
             // Update the branch predictor with the actual outcome
             branch_predictor.update(current_branch_addr, branch_taken);
 
-            cout << "Branch address: " << hex << current_branch_addr 
-                 << ", B-Type Instruction: " << hex << instruction 
-                 << ", Branch Taken: " << boolalpha << branch_taken 
-                 << ", Prediction: " << prediction << endl;
+            string weights = branch_predictor.get_perceptron_weights(hash_index);
+
+            cout << "Branch address: " << hex << current_branch_addr
+                 << ", \tHash index: " << dec << hash_index
+                 << ", \tStarting address: " << dec << (STORAGE_PER_PERCEPTRON/8 * hash_index)
+                 << ", \tBranch Taken: " << branch_taken
+                 << ", \tPrediction: " << prediction
+                 << ", \tY: " << dec << y
+                 << ", \t\tWeights after training: " << weights << endl;
 
             total_branches++;
             if (branch_taken == prediction) {

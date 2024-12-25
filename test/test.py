@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: © 2024 Tiny Tapeout
 # SPDX-License-Identifier: Apache-2.0
 
+import re
 import random
+import subprocess
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
@@ -10,8 +13,7 @@ from cocotb.triggers import ClockCycles, RisingEdge
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16
 HISTORY_LENGTH = 15
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
-STORAGE_B_PER_MEM = 64
-STORAGE_B = 2 * STORAGE_B_PER_MEM # Ensure this is a multiple of STORAGE_PER_PERCEPTRON
+STORAGE_B = 128
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
@@ -47,6 +49,29 @@ async def send_spi_data(dut, addr, direction):
     dut.spi_cs.value = 1
     await RisingEdge(dut.spi_clk)
     dut.spi_mosi.value = direction
+
+def parse_branch_log(line):
+    pattern = r"""
+    Branch\saddress:\s*(?P<addr>[0-9a-fA-F]+),\s*
+    Hash\sindex:\s*(?P<hash>\d+),\s*
+    Starting\saddress:\s*(?P<start_addr>\d+),\s*
+    Branch\sTaken:\s*(?P<taken>\d+),\s*
+    Prediction:\s*(?P<pred>\d+),\s*
+    Y:\s*(?P<y>-?\d+),\s*
+    Weights\safter\straining:\s*(?P<weights>[-\d,\s]+)
+    """
+    match = re.search(pattern, line, re.VERBOSE)
+    if match:
+        return {
+            'address': int(match.group('addr'), 16),
+            'hash_index': int(match.group('hash')),
+            'start_addr': int(match.group('start_addr')),
+            'taken': bool(int(match.group('taken'))),
+            'prediction': bool(int(match.group('pred'))),
+            'y': int(match.group('y')),
+            'weights': [int(x) for x in match.group('weights').strip().split(',') if x.strip()]
+        }
+    return None
 
 @cocotb.test()
 async def test_constants(dut):
@@ -112,10 +137,8 @@ async def test_history_buffer(dut):
     start_clocks(dut)
     await reset(dut)
 
-    await send_spi_data(dut, addr=0, direction=0) # Fill history with 0s
-
     for _ in range(HISTORY_LENGTH):
-        await send_spi_data(dut, addr=0xFFFF, direction=0) # Fill history with 0s
+        await send_spi_data(dut, addr=0x0, direction=0) # Fill history with 0s
 
     for _ in range(NUM_TESTS):
         direction = random.randint(0, 1)
@@ -129,3 +152,37 @@ async def test_history_buffer(dut):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
         assert dut.branch_pred.history_buffer.value == int(binary_str, base=2)
+
+@cocotb.test()
+async def test_perceptron_weights(dut):
+    start_clocks(dut)
+    await reset(dut)
+
+    for _ in range(HISTORY_LENGTH):
+        await send_spi_data(dut, addr=0x0, direction=0) # Fill history with 0s
+
+    # Run functional sim and capture output
+    cmd = ["../func_sim/build/func_sim", "../func_sim/spike_log.txt"]
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    stdout = process.communicate()
+    for line in stdout[0].splitlines():
+        if line.startswith("Branch address:"):
+            result = parse_branch_log(line)
+            addr = (result['address'] & 0xFF)
+            hash_index = (addr >> 2) % NUM_PERCEPTRONS
+            direction = result['taken']
+            await send_spi_data(dut, addr=addr, direction=direction)
+            while (dut.branch_pred.data_input_done.value != 1):
+                await RisingEdge(dut.clk)
+
+            # Check index
+            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == hash_index
+
+            # Check memory addr
+            await RisingEdge(dut.clk)
+            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr']
+
+            while (dut.branch_pred.pred_ready.value != 1):
+                await RisingEdge(dut.clk)
+            # TODO: Check sum
+            # TODO: Check prediction

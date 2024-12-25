@@ -39,7 +39,7 @@ jobs:
 
       - name: Run memory tests
         run: |
-          cd ../tt06-memory/test
+          cd src/tt06-memory/test
           make clean
           make
           # make will return success even if the test fails, so check for failure in the results.xml
@@ -48,7 +48,7 @@ jobs:
       - name: Memory Test Summary
         uses: test-summary/action@v2.3
         with:
-          paths: "../tt06-memory/test/results.xml"
+          paths: "src/tt06-memory/test/results.xml"
         if: always()
 
       - name: upload vcd

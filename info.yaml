@@ -5,10 +5,10 @@ project:
   discord:      ""
   description:  "A minimal perceptron-based branch predictor"
   language:     "Verilog"
-  clock_hz:     1000000
+  clock_hz:     1000000 # 10 MHz
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "2x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
   top_module:  "tt_um_branch_pred"
@@ -36,9 +36,9 @@ pinout:
   # Outputs
   uo[0]: "direction_ground_truth"
   uo[1]: "data_input_done"
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
+  uo[2]: "pred_ready"
+  uo[3]: "prediction"
+  uo[4]: "training_done"
   uo[5]: ""
   uo[6]: ""
   uo[7]: ""
