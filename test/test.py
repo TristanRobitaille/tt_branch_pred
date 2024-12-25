@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: © 2024 Tiny Tapeout
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import re
 import random
 import subprocess
@@ -11,7 +12,7 @@ from cocotb.triggers import ClockCycles, RisingEdge
 
 #----- CONSTANTS -----#
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16
-HISTORY_LENGTH = 15
+HISTORY_LENGTH = 7
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
 STORAGE_B = 128
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
@@ -20,6 +21,7 @@ NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 #----- HELPERS -----#
 async def reset(dut):
     dut.rst_n.value = 0
+    dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.spi_cs.value = 0
@@ -28,6 +30,14 @@ async def reset(dut):
     dut.spi_cs.value = 1
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
+
+async def reset_memory(dut):
+    for i in range(STORAGE_B):
+        dut.branch_pred.mem_data_in.value = 0
+        dut.branch_pred.wr_en.value = 1 # Write
+        dut.branch_pred.mem_addr.value = i
+        await RisingEdge(dut.clk) # Wait for write to complete
+        await RisingEdge(dut.clk) # Cycle after write can't be used
 
 async def clear_spi_registers(dut):
     dummy_addr = 0x0000
@@ -72,6 +82,32 @@ def parse_branch_log(line):
             'weights': [int(x) for x in match.group('weights').strip().split(',') if x.strip()]
         }
     return None
+
+def twos_complement_to_int(binary_str, width):
+    """Convert two's complement binary string to signed integer."""
+    value = int(binary_str, 2)
+    if value & (1 << (width - 1)):  # If sign bit is set
+        inverted = value ^ ((1 << width) - 1)
+        return -(inverted + 1)
+    return value
+
+async def check_weights(dut, starting_addr, weights):
+    initial_wr_en = dut.branch_pred.wr_en.value
+    initial_mem_addr = dut.branch_pred.mem_addr.value    
+    initial_uio_in = dut.branch_pred.latch_mem.uio_in.value
+    await RisingEdge(dut.clk)
+
+    for i in range(len(weights)):
+        dut.branch_pred.wr_en.value = 0 # Read
+        dut.branch_pred.mem_addr.value = starting_addr + i
+        await ClockCycles(dut.clk, 2)
+        value = str(dut.branch_pred.mem_data_out.value)
+        # print(f"Checking weight {i}: {value} == {weights[i]}")
+        assert twos_complement_to_int(value, len(value)) == weights[i]
+    
+    dut.branch_pred.wr_en.value = initial_wr_en
+    dut.branch_pred.mem_addr.value = initial_mem_addr
+    dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
 
 @cocotb.test()
 async def test_constants(dut):
@@ -136,9 +172,7 @@ async def test_history_buffer(dut):
 
     start_clocks(dut)
     await reset(dut)
-
-    for _ in range(HISTORY_LENGTH):
-        await send_spi_data(dut, addr=0x0, direction=0) # Fill history with 0s
+    await ClockCycles(dut.clk, 50) # Delay to read waveform easier
 
     for _ in range(NUM_TESTS):
         direction = random.randint(0, 1)
@@ -148,35 +182,42 @@ async def test_history_buffer(dut):
         binary_str = ''.join(str(x) for x in history_buffer)
 
         await send_spi_data(dut, addr=0, direction=direction)
-        while (dut.branch_pred.data_input_done.value != 1):
+        while (dut.branch_pred.training_done.value != 1):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
         assert dut.branch_pred.history_buffer.value == int(binary_str, base=2)
 
 @cocotb.test()
-async def test_perceptron_weights(dut):
+async def test_perceptron_all_registers(dut):
+    MAX_NUM_TESTS = -1
+    cnt = 0
     start_clocks(dut)
     await reset(dut)
+    await reset_memory(dut)
 
-    for _ in range(HISTORY_LENGTH):
-        await send_spi_data(dut, addr=0x0, direction=0) # Fill history with 0s
+    await ClockCycles(dut.clk, 100) # Delay to read waveform easier
 
     # Run functional sim and capture output
+    # Make functional sim
+    os.chdir("../func_sim")
+    subprocess.run(["cmake", "CMakeLists.txt"], check=True)
+    subprocess.run(["make"], check=True)
+    os.chdir("../test")
     cmd = ["../func_sim/build/func_sim", "../func_sim/spike_log.txt"]
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
     stdout = process.communicate()
     for line in stdout[0].splitlines():
         if line.startswith("Branch address:"):
             result = parse_branch_log(line)
+            print(result)
             addr = (result['address'] & 0xFF)
-            hash_index = (addr >> 2) % NUM_PERCEPTRONS
             direction = result['taken']
             await send_spi_data(dut, addr=addr, direction=direction)
             while (dut.branch_pred.data_input_done.value != 1):
                 await RisingEdge(dut.clk)
 
             # Check index
-            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == hash_index
+            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == result['hash_index']
 
             # Check memory addr
             await RisingEdge(dut.clk)
@@ -184,5 +225,15 @@ async def test_perceptron_weights(dut):
 
             while (dut.branch_pred.pred_ready.value != 1):
                 await RisingEdge(dut.clk)
-            # TODO: Check sum
-            # TODO: Check prediction
+            assert dut.branch_pred.prediction.value == result['prediction']
+            assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
+
+            while (dut.branch_pred.training_done.value != 1):
+                await RisingEdge(dut.clk)
+
+            # Check the weights (Perform with and without checking the weights)
+            await check_weights(dut, result['start_addr'], result['weights'])
+            
+            cnt += 1
+            if (MAX_NUM_TESTS != -1) and (cnt >= MAX_NUM_TESTS):
+                break
