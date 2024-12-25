@@ -6,7 +6,13 @@
 `default_nettype none
 
 module tt_um_branch_pred #(
-    parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16
+    parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16,
+    parameter HISTORY_LENGTH = 16,
+    parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
+    parameter STORAGE_B = 128, // Ensure this is a multiple of STORAGE_PER_PERCEPTRON. If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter STORAGE_PER_PERCEPTRON = (HISTORY_LENGTH * BIT_WIDTH_WEIGHTS),
+    parameter NUM_PERCEPTRONS = (STORAGE_B / STORAGE_PER_PERCEPTRON),
+    parameter PERCEPTRON_INDEX_WIDTH = $clog2(NUM_PERCEPTRONS) // Must be wide enough to store NUM_PERCEPTRONS
 )(
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
@@ -54,10 +60,44 @@ module tt_um_branch_pred #(
     );
 
     //---------------------------------
-    //             RESET 
+    //           PREDICTOR 
     //---------------------------------
-    always @ (posedge clk) begin
-        if (!rst_n) begin
-        end
+    reg perceptron_index[PERCEPTRON_INDEX_WIDTH-1:0];
+    reg [1:0] state_pred;
+    // parameter IDLE = 2'b00, COMPUTING = 2'b01;, 
+
+    tt_um_MichaelBell_latch_mem #(
+        .RAM_BYTES(STORAGE_B)
+    ) latch_mem (
+        .ui_in(),  // [wr_en|x|addr]
+        .uo_out(), // Data output (8b)
+        .uio_in(), // Data input (8b)
+        .ena(ena), .clk(clk), .rst_n(rst_n)
+    );
+
+    always @ (*) begin
+        perceptron_index = inst_addr[PERCEPTRON_INDEX_WIDTH-1 + 2 : 2]; // Implements (inst_addr >> 2) % NUM_PERCEPTRONS
     end
+
+    // always @ (posedge clk) begin
+    //     if (!rst_n) begin
+        
+    //     end else begin
+    //         case (state)
+    //             IDLE: begin
+    //                 if (data_input_done) begin
+    //                     state <= COMPUTING;
+    //                 end
+    //             end
+    //             COMPUTING: begin
+
+    //             end
+    //             xxx: begin
+    //             end
+    //             default:
+    //                 state <= IDLE;
+    //         endcase
+    //     end
+    // end
+
 endmodule

@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
     cmake \
     libglib2.0-dev \
     libslirp-dev \
-    device-tree-compiler && \
+    device-tree-compiler \
     iverilog && \
     rm -rf /var/lib/apt/lists/*
 
@@ -58,16 +58,16 @@ RUN echo 'export PATH=/opt/riscv_sim/bin:$PATH' >> ~/.bashrc && \
     . ~/.bashrc
 
 # Proxy Kernel
-RUN git clone https://github.com/riscv-software-src/riscv-pk.git && \
-    cd riscv-pk && \
-    mkdir build && \
-    cd build && \
-    ../configure --host=riscv32-unknown-elf --prefix=/opt/riscv_pk/riscv32-unknown-elf && \
-    make -j10 && \
-    make -j10 install
+# RUN git clone https://github.com/riscv-software-src/riscv-pk.git && \
+#     cd riscv-pk && \
+#     mkdir build && \
+#     cd build && \
+#     ../configure --host=riscv32-unknown-elf --prefix=/opt/riscv_pk/riscv32-unknown-elf && \
+#     make -j10 && \
+#     make -j10 install
 
-RUN echo 'export PATH=/opt/riscv_pk/riscv32-unknown-elf/riscv32-unknown-elf/bin:$PATH' >> ~/.bashrc && \
-    . ~/.bashrc
+# RUN echo 'export PATH=/opt/riscv_pk/riscv32-unknown-elf/riscv32-unknown-elf/bin:$PATH' >> ~/.bashrc && \
+#     . ~/.bashrc
 
 #----- Python -----#
 COPY test/requirements.txt .
