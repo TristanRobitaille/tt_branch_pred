@@ -9,13 +9,15 @@ module tb ();
     #1;
   end
 
-  // Wire up the inputs and outputs:
+  // Input
+  wire new_data_avail, direction_ground_truth;
+  wire [7:0] inst_lowest_byte;
+
+  // Output
+  wire new_data_avail_posedge, pred_ready, prediction, training_done;
+
+  // Other signals
   reg clk;
-  reg spi_clk;
-  reg spi_cs;
-  reg spi_mosi;
-  reg data_input_done;
-  reg direction_ground_truth;
   reg rst_n;
   reg ena;
   reg [7:0] ui_in;
@@ -24,13 +26,14 @@ module tb ();
   wire [7:0] uio_out;
   wire [7:0] uio_oe;
   
-  always @(*) begin
-    uio_in[0] = spi_cs;
-    uio_in[1] = spi_mosi;
-    uio_in[3] = spi_clk;
-    direction_ground_truth = uo_out[0];
-    data_input_done = uo_out[1];
-  end
+  assign uio_in[0] = new_data_avail;
+  assign uio_in[1] = direction_ground_truth;
+  assign ui_in = inst_lowest_byte;
+  
+  assign new_data_avail_posedge = uo_out[0];
+  assign pred_ready = uo_out[1];
+  assign prediction = uo_out[2];
+  assign training_done = uo_out[3];
 
 `ifdef GL_TEST
   wire VPWR = 1'b1;

@@ -11,7 +11,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
 #----- CONSTANTS -----#
-NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16
+NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8
 HISTORY_LENGTH = 7
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
 STORAGE_B = 64
@@ -24,12 +24,11 @@ async def reset(dut):
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
-    dut.spi_cs.value = 0
-    dut.spi_mosi.value = 0
-    await ClockCycles(dut.spi_clk, 5)
-    dut.spi_cs.value = 1
+    dut.new_data_avail.value = 0
+    dut.direction_ground_truth.value = 0
+    dut.inst_lowest_byte.value = 0
+    await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
 
 async def reset_memory(dut):
     for i in range(STORAGE_B):
@@ -38,27 +37,20 @@ async def reset_memory(dut):
         dut.branch_pred.mem_addr.value = i
         await RisingEdge(dut.clk) # Wait for write to complete
         await RisingEdge(dut.clk) # Cycle after write can't be used
+    dut.branch_pred.wr_en.value = 0
+    dut.branch_pred.mem_addr.value = 0
 
-async def clear_spi_registers(dut):
-    dummy_addr = 0x0000
-    dummy_direction = 0
-    await send_spi_data(dut, dummy_addr, dummy_direction)
-
-def start_clocks(dut):
+def start_clock(dut):
     clock = Clock(dut.clk, 100, units="ns") # 10MHz
-    spi_clock = Clock(dut.spi_clk, 1000, units="ns") # 1MHz
     cocotb.start_soon(clock.start())
-    cocotb.start_soon(spi_clock.start())
 
-async def send_spi_data(dut, addr, direction):
-    await RisingEdge(dut.spi_clk)
-    dut.spi_cs.value = 0
-    for i in range(NUM_BITS_OF_INST_ADDR_LATCHED_IN):
-        await RisingEdge(dut.spi_clk)
-        dut.spi_mosi.value = (addr >> (15 - i)) & 0x1
-    dut.spi_cs.value = 1
-    await RisingEdge(dut.spi_clk)
-    dut.spi_mosi.value = direction
+async def send_data(dut, addr, direction):
+    dut.inst_lowest_byte.value = addr
+    dut.direction_ground_truth.value = direction
+    dut.new_data_avail.value = 1
+    await RisingEdge(dut.clk)
+    dut.new_data_avail.value = 0
+    await RisingEdge(dut.clk)
 
 def parse_branch_log(line):
     pattern = r"""
@@ -102,77 +94,70 @@ async def check_weights(dut, starting_addr, weights):
         dut.branch_pred.mem_addr.value = starting_addr + i
         await ClockCycles(dut.clk, 2)
         value = str(dut.branch_pred.mem_data_out.value)
-        # print(f"Checking weight {i}: {value} == {weights[i]}")
         assert twos_complement_to_int(value, len(value)) == weights[i]
     
     dut.branch_pred.wr_en.value = initial_wr_en
     dut.branch_pred.mem_addr.value = initial_mem_addr
     dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
 
-@cocotb.test()
-async def test_constants(dut):
-    start_clocks(dut)
+# @cocotb.test()
+# async def test_constants(dut):
+    start_clock(dut)
     await RisingEdge(dut.clk)
     assert dut.uio_oe.value == 0 # All bidirectional pins should be in input mode
 
 @cocotb.test()
-async def test_reset(dut):
-    start_clocks(dut)
+async def test_new_data_avail_signals(dut):
+    start_clock(dut)
     await reset(dut)
 
-    # TODO: Add more tests
+    dut.new_data_avail.value = 1
+    await RisingEdge(dut.clk)
+    dut.new_data_avail.value = 0
+    assert dut.new_data_avail_posedge.value == 1
+    await RisingEdge(dut.clk)
+    assert dut.new_data_avail_posedge.value == 0
+    assert dut.branch_pred.new_data_avail_prev.value == 1
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.new_data_avail_prev.value == 0
 
 @cocotb.test()
-async def test_spi(dut):
+async def test_send_data(dut):
     NUM_TESTS = 100
     random.seed(42)
 
-    start_clocks(dut)
+    start_clock(dut)
     await reset(dut)
-
-    # First transmit is to clear SPI registers (since we don't reset)
-    await clear_spi_registers(dut)
 
     for _ in range(NUM_TESTS):
         direction = random.randint(0, 1)
         addr = random.randint(0, 2**NUM_BITS_OF_INST_ADDR_LATCHED_IN - 1)
-        await send_spi_data(dut, addr, direction)
-        while (dut.branch_pred.data_input_done.value != 1):
-            await RisingEdge(dut.clk)
+        await send_data(dut, addr, direction)
         assert dut.branch_pred.direction_ground_truth.value == direction
-        assert dut.direction_ground_truth.value == direction
         assert dut.branch_pred.inst_addr.value == addr
-        assert dut.data_input_done.value == 1
-        await ClockCycles(dut.clk, 1)
-        assert dut.data_input_done.value == 0
-
-    await ClockCycles(dut.spi_clk, 10)
 
 @cocotb.test()
 async def test_perceptron_index(dut):
     NUM_TESTS = 100
     random.seed(42)
 
-    start_clocks(dut)
+    start_clock(dut)
     await reset(dut)
 
     for _ in range(NUM_TESTS):
         direction = random.randint(0, 1)
         addr = random.randint(0, 2**NUM_BITS_OF_INST_ADDR_LATCHED_IN - 1)
-        await send_spi_data(dut, addr, direction)
-        while (dut.branch_pred.data_input_done.value != 1):
-            await RisingEdge(dut.clk)
+        await send_data(dut, addr, direction)
         assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == ((addr >> 2) % NUM_PERCEPTRONS)
 
 @cocotb.test()
 async def test_history_buffer(dut):
-    NUM_TESTS = 100
+    NUM_TESTS = -1
     random.seed(42)
     history_buffer = [0] * HISTORY_LENGTH
 
-    start_clocks(dut)
+    start_clock(dut)
     await reset(dut)
-    await ClockCycles(dut.clk, 50) # Delay to read waveform easier
 
     for _ in range(NUM_TESTS):
         direction = random.randint(0, 1)
@@ -181,7 +166,7 @@ async def test_history_buffer(dut):
         history_buffer.append(direction)
         binary_str = ''.join(str(x) for x in history_buffer)
 
-        await send_spi_data(dut, addr=0, direction=direction)
+        await send_data(dut, addr=0, direction=direction)
         while (dut.branch_pred.training_done.value != 1):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
@@ -191,11 +176,9 @@ async def test_history_buffer(dut):
 async def test_perceptron_all_registers(dut):
     MAX_NUM_TESTS = -1
     cnt = 0
-    start_clocks(dut)
+    start_clock(dut)
     await reset(dut)
     await reset_memory(dut)
-
-    await ClockCycles(dut.clk, 100) # Delay to read waveform easier
 
     # Run functional sim and capture output
     # Make functional sim
@@ -212,23 +195,17 @@ async def test_perceptron_all_registers(dut):
             print(result)
             addr = (result['address'] & 0xFF)
             direction = result['taken']
-            await send_spi_data(dut, addr=addr, direction=direction)
-            while (dut.branch_pred.data_input_done.value != 1):
+            await send_data(dut, addr=addr, direction=direction)
+
+            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == result['hash_index'] # Check index
+            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr'] # Check memory addr
+
+            while (dut.pred_ready.value != 1):
                 await RisingEdge(dut.clk)
-
-            # Check index
-            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == result['hash_index']
-
-            # Check memory addr
-            await RisingEdge(dut.clk)
-            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr']
-
-            while (dut.branch_pred.pred_ready.value != 1):
-                await RisingEdge(dut.clk)
-            assert dut.branch_pred.prediction.value == result['prediction']
+            assert dut.prediction.value == result['prediction']
             assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
 
-            while (dut.branch_pred.training_done.value != 1):
+            while (dut.training_done.value != 1):
                 await RisingEdge(dut.clk)
 
             # Check the weights (Perform with and without checking the weights)

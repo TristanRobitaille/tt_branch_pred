@@ -8,7 +8,7 @@ project:
   clock_hz:     1000000 # 10 MHz
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "2x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "1x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
   top_module:  "tt_um_branch_pred"
@@ -18,36 +18,35 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "branch_pred.v"
-    - "spi.v"
     - "tt06-memory/src/latch_memory.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[0]: "inst_addr[0]"
+  ui[1]: "inst_addr[1]"
+  ui[2]: "inst_addr[2]"
+  ui[3]: "inst_addr[3]"
+  ui[4]: "inst_addr[4]"
+  ui[5]: "inst_addr[5]"
+  ui[6]: "inst_addr[6]"
+  ui[7]: "inst_addr[7]"
 
   # Outputs
-  uo[0]: "direction_ground_truth"
-  uo[1]: "data_input_done"
-  uo[2]: "pred_ready"
-  uo[3]: "prediction"
-  uo[4]: "training_done"
+  uo[0]: "new_data_avail_posedge"
+  uo[1]: "pred_ready"
+  uo[2]: "prediction"
+  uo[3]: "training_done"
+  uo[4]: ""
   uo[5]: ""
   uo[6]: ""
   uo[7]: ""
 
   # Bidirectional pins
-  uio[0]: "cs"
-  uio[1]: "mosi"
+  uio[0]: "new_data_avail"
+  uio[1]: "direction_ground_truth"
   uio[2]: ""
-  uio[3]: "sclk"
+  uio[3]: ""
   uio[4]: ""
   uio[5]: ""
   uio[6]: ""

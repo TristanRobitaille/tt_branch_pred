@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Wed Dec 25 22:41:37 2024
+[*] Thu Dec 26 09:07:43 2024
 [*]
 [dumpfile] "/Users/tristan/Developer/tt_branch_pred/test/tb.vcd"
-[dumpfile_mtime] "Wed Dec 25 22:38:58 2024"
-[dumpfile_size] 104807
+[dumpfile_mtime] "Thu Dec 26 09:07:41 2024"
+[dumpfile_size] 24961
 [savefile] "/Users/tristan/Developer/tt_branch_pred/test/tb.gtkw"
-[timestart] 147226000
+[timestart] 0
 [size] 3440 1387
 [pos] -1 -1
-*-18.599997 151000000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+*-20.099997 2995000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 [markername] AA
 [markername] BB
 [markername] CC
@@ -38,55 +38,39 @@
 [markername] ZZ
 [treeopen] tb.
 [treeopen] tb.branch_pred.
-[sst_width] 253
-[signals_width] 263
+[sst_width] 350
+[signals_width] 252
 [sst_expanded] 1
-[sst_vpaned_height] 637
+[sst_vpaned_height] 389
 @28
 tb.clk
 tb.branch_pred.rst_n
 @200
 -
--SPI
+-Data input
 @28
-tb.branch_pred.spi_inst.sclk
-tb.branch_pred.spi_inst.cs
-tb.branch_pred.spi_inst.mosi
-tb.branch_pred.spi_inst.state[1:0]
+tb.branch_pred.new_data_avail_prev
+tb.branch_pred.new_data_avail_posedge
+tb.branch_pred.new_data_avail
 @22
-tb.branch_pred.spi_inst.inst_addr[15:0]
+tb.branch_pred.inst_addr[7:0]
+tb.branch_pred.ui_in[7:0]
 @28
-tb.branch_pred.spi_inst.data_input_done
-tb.branch_pred.spi_inst.direction_ground_truth
+tb.branch_pred.direction_ground_truth
 @200
 -
 -Perceptron
 @22
 tb.branch_pred.cnt[3:0]
-@29
-tb.branch_pred.history_buffer[7:0]
 @28
-tb.branch_pred.data_input_done
+tb.branch_pred.history_buffer[7:0]
 tb.branch_pred.training_done
 tb.branch_pred.pred_ready
 @24
 tb.branch_pred.state_pred[1:0]
-@c00024
-tb.branch_pred.mem_addr[6:0]
-@28
-(0)tb.branch_pred.mem_addr[6:0]
-(1)tb.branch_pred.mem_addr[6:0]
-(2)tb.branch_pred.mem_addr[6:0]
-(3)tb.branch_pred.mem_addr[6:0]
-(4)tb.branch_pred.mem_addr[6:0]
-(5)tb.branch_pred.mem_addr[6:0]
-(6)tb.branch_pred.mem_addr[6:0]
-@1401200
--group_end
-@420
-tb.branch_pred.mem_data_in[7:0]
-tb.branch_pred.mem_data_out[7:0]
-@28
-tb.branch_pred.wr_en
+@25
+tb.branch_pred.mem_addr[5:0]
+@24
+tb.branch_pred.perceptron_index[2:0]
 [pattern_trace] 1
 [pattern_trace] 0

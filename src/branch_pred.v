@@ -6,7 +6,7 @@
 `default_nettype none
 
 module tt_um_branch_pred #(
-    parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16,
+    parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8,
     parameter HISTORY_LENGTH = 7, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
     parameter STORAGE_B = 64, // If larger than 2^7, will need to modify memory since max. address is 7 bits
@@ -28,47 +28,42 @@ module tt_um_branch_pred #(
 );
 
     /* TODO:
-        -Reset weights
+        -Reset weights?
     */
 
     //---------------------------------
     //              PINS 
     //---------------------------------
-    //TODO: Once final, update the following lines
     // All output pins must be assigned. If not used, assign to 0.
     assign uio_out = 8'b0;
-    assign uio_oe  = 8'b0;
 
     // SPI inputs
-    assign uio_oe[0] = 1'b0; // cs
-    assign uio_oe[1] = 1'b0; // mosi
-    assign uio_oe[3] = 1'b0; // sclk
-
-    assign uo_out[0] = direction_ground_truth;
-    assign uo_out[1] = data_input_done;
-    assign uo_out[2] = pred_ready;
-    assign uo_out[3] = prediction;
-    assign uo_out[4] = training_done;
-    assign uo_out[7:5] = 'b0;
+    assign uio_oe[0] = 1'b0; // new_data_avail
+    assign uio_oe[1] = 1'b0; // direction_ground_truth
+    assign uio_oe[7:2] = 'b0;
+    
+    assign uo_out[0] = new_data_avail_posedge;
+    assign uo_out[1] = pred_ready;
+    assign uo_out[2] = prediction;
+    assign uo_out[3] = training_done;
+    assign uo_out[7:4] = 'b0;
 
     // List all unused inputs to prevent warnings
     wire _unused = &{ena, clk, rst_n, 1'b0};
 
-    //---------------------------------
-    //              SPI 
-    //---------------------------------
-    wire direction_ground_truth, data_input_done;
+    wire new_data_avail, new_data_avail_posedge;
+    wire direction_ground_truth;
     wire [NUM_BITS_OF_INST_ADDR_LATCHED_IN-1:0] inst_addr;
+    reg new_data_avail_prev;
 
-    spi #(
-        .NUM_BITS_OF_INST_ADDR_LATCHED_IN(NUM_BITS_OF_INST_ADDR_LATCHED_IN)
-    ) spi_inst (
-        .clk(clk), .rst_n(rst_n),
-        .cs(uio_in[0]), .mosi(uio_in[1]), .sclk(uio_in[3]),
-        .direction_ground_truth(direction_ground_truth),
-        .data_input_done(data_input_done),
-        .inst_addr(inst_addr)
-    );
+    assign new_data_avail = uio_in[0];
+    assign direction_ground_truth = uio_in[1];
+    assign new_data_avail_posedge = (new_data_avail & ~new_data_avail_prev);
+    assign inst_addr = ui_in;
+
+    always @ (posedge clk) begin
+        new_data_avail_prev <= (rst_n) ? new_data_avail : 1'b0;
+    end
 
     //---------------------------------
     //           PREDICTOR 
@@ -79,7 +74,7 @@ module tt_um_branch_pred #(
         The starting index (byte) of the weights for a perceptron is given by: (HISTORY_LENGTH + 1) * perceptron_index * (BIT_WIDTH_WEIGHTS/8)
     */
 
-    reg wr_en, wr_en_del; // 0: Read, 1: Write
+    reg wr_en; // 0: Read, 1: Write
     reg prediction, pred_ready, training_done;
     reg [1:0] state_pred;
     reg [7:0] mem_data_in, mem_data_out;
@@ -110,7 +105,7 @@ module tt_um_branch_pred #(
             history_buffer <= 'b0;
         end else begin
             if (training_done) begin
-                history_buffer <= {history_buffer[HISTORY_LENGTH-2:0], direction_ground_truth};
+                history_buffer <= {history_buffer[HISTORY_LENGTH-1:0], direction_ground_truth};
             end
         end
     end
@@ -123,20 +118,16 @@ module tt_um_branch_pred #(
 
     always @ (posedge clk) begin
         if (!rst_n) begin
-            mem_addr <= 'd0;
             state_pred <= IDLE;
-            sum <= 'd0;
-            mem_data_in <= 1'b0;
-            wr_en <= 1'b0;
-            substate <= 'd0;
         end else begin
             case (state_pred)
                 IDLE: begin
+                    substate <= 'd0;
                     wr_en <= 1'b0; // Read
                     training_done <= 1'b0;
                     pred_ready <= 1'b0;
                     cnt <= 'd0;
-                    if (data_input_done) begin
+                    if (new_data_avail_posedge) begin
                         state_pred <= COMPUTING;
                         mem_addr <= (perceptron_index << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
                     end

@@ -5,7 +5,7 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = spi.v tt06-memory/src/latch_memory.v branch_pred.v
+PROJECT_SOURCES = tt06-memory/src/latch_memory.v branch_pred.v
 
 ifneq ($(GATES),yes)
 
