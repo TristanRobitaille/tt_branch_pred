@@ -37,7 +37,7 @@ pinout:
   uo[1]: "pred_ready"
   uo[2]: "prediction"
   uo[3]: "training_done"
-  uo[4]: ""
+  uo[4]: "mem_reset_done"
   uo[5]: ""
   uo[6]: ""
   uo[7]: ""

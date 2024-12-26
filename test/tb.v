@@ -14,7 +14,7 @@ module tb ();
   wire [7:0] inst_lowest_byte;
 
   // Output
-  wire new_data_avail_posedge, pred_ready, prediction, training_done;
+  wire new_data_avail_posedge, pred_ready, prediction, training_done, mem_reset_done;
 
   // Other signals
   reg clk;
@@ -34,6 +34,7 @@ module tb ();
   assign pred_ready = uo_out[1];
   assign prediction = uo_out[2];
   assign training_done = uo_out[3];
+  assign mem_reset_done = uo_out[4];
 
 `ifdef GL_TEST
   wire VPWR = 1'b1;

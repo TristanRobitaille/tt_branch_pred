@@ -19,7 +19,7 @@ STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
 #----- HELPERS -----#
-async def reset(dut):
+async def reset(dut, wait_for_mem_reset_done=True):
     dut.rst_n.value = 0
     dut.ena.value = 1
     dut.ui_in.value = 0
@@ -29,27 +29,21 @@ async def reset(dut):
     dut.inst_lowest_byte.value = 0
     await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
-
-async def reset_memory(dut):
-    for i in range(STORAGE_B):
-        dut.branch_pred.mem_data_in.value = 0
-        dut.branch_pred.wr_en.value = 1 # Write
-        dut.branch_pred.mem_addr.value = i
-        await RisingEdge(dut.clk) # Wait for write to complete
-        await RisingEdge(dut.clk) # Cycle after write can't be used
-    dut.branch_pred.wr_en.value = 0
-    dut.branch_pred.mem_addr.value = 0
+    if wait_for_mem_reset_done:
+        while (dut.mem_reset_done.value != 1):
+            await RisingEdge(dut.clk)
 
 def start_clock(dut):
     clock = Clock(dut.clk, 100, units="ns") # 10MHz
     cocotb.start_soon(clock.start())
 
-async def send_data(dut, addr, direction):
+async def send_data(dut, addr, direction, hold_data_avail=False):
     dut.inst_lowest_byte.value = addr
     dut.direction_ground_truth.value = direction
     dut.new_data_avail.value = 1
     await RisingEdge(dut.clk)
-    dut.new_data_avail.value = 0
+    if not hold_data_avail:
+        dut.new_data_avail.value = 0
     await RisingEdge(dut.clk)
 
 def parse_branch_log(line):
@@ -100,8 +94,9 @@ async def check_weights(dut, starting_addr, weights):
     dut.branch_pred.mem_addr.value = initial_mem_addr
     dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
 
-# @cocotb.test()
-# async def test_constants(dut):
+# ----- TESTS -----#
+@cocotb.test()
+async def test_constants(dut):
     start_clock(dut)
     await RisingEdge(dut.clk)
     assert dut.uio_oe.value == 0 # All bidirectional pins should be in input mode
@@ -174,11 +169,10 @@ async def test_history_buffer(dut):
 
 @cocotb.test()
 async def test_perceptron_all_registers(dut):
-    MAX_NUM_TESTS = -1
+    MAX_NUM_TESTS = 300
     cnt = 0
     start_clock(dut)
     await reset(dut)
-    await reset_memory(dut)
 
     # Run functional sim and capture output
     # Make functional sim
@@ -214,3 +208,107 @@ async def test_perceptron_all_registers(dut):
             cnt += 1
             if (MAX_NUM_TESTS != -1) and (cnt >= MAX_NUM_TESTS):
                 break
+
+@cocotb.test()
+async def test_new_data_avail_posedge_only(dut):
+    # Test that the predictor only works on the posedge of the new data avail. signal
+    start_clock(dut)
+    await reset(dut)
+
+    await send_data(dut, addr=0xFF, direction=1, hold_data_avail=True)
+    assert dut.branch_pred.state_pred.value == 1 # In computing state
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 1 # Still in computing state
+
+@cocotb.test()
+async def test_new_data_ignored_if_training(dut):
+    # Test that new data is ignored if the predictor is training
+    start_clock(dut)
+    await reset(dut)
+
+    await send_data(dut, addr=0xFF, direction=1)
+    while (dut.pred_ready.value != 1): # Wait for inference to complete
+        await RisingEdge(dut.clk)
+    assert dut.training_done.value == 0 # Not done training
+    assert dut.branch_pred.state_pred.value == 2 # In pre-training delay state
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 3 # In training state
+    await RisingEdge(dut.clk)
+    await send_data(dut, addr=0xFF, direction=1)
+    assert dut.branch_pred.state_pred.value == 3 # Still in training state
+    while (dut.training_done.value != 1):
+        await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 0 # Back to idle state
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.history_buffer.value == 1 # History buffer did not capture the second data
+
+@cocotb.test()
+async def test_reset_memory(dut):
+    start_clock(dut)
+    await reset(dut)
+    await RisingEdge(dut.clk)
+
+    # Write random data to memory
+    for i in range(STORAGE_B):
+        value = random.randint(-128, 127)
+        dut.branch_pred.mem_data_in.value = value
+        dut.branch_pred.wr_en.value = 1 # Write
+        dut.branch_pred.mem_addr.value = i
+        await RisingEdge(dut.clk) # Wait for write to complete
+        await RisingEdge(dut.clk) # Cycle after write can't be used
+        dut.branch_pred.wr_en.value = 0 # Read
+        await RisingEdge(dut.clk) # Cycle after write can't be used
+        value_read = str(dut.branch_pred.mem_data_out.value)
+        assert twos_complement_to_int(value_read, len(value_read)) == value
+
+    # Reset
+    await reset(dut)
+    await RisingEdge(dut.clk)
+
+    # Check that memory is zeroed out
+    for i in range(STORAGE_B):
+        dut.branch_pred.wr_en.value = 0
+        dut.branch_pred.mem_addr.value = i
+        await RisingEdge(dut.clk)
+        assert dut.branch_pred.mem_data_out.value == 0
+
+@cocotb.test()
+async def test_data_ignored_while_resetting(dut):
+    start_clock(dut)
+    await reset(dut, wait_for_mem_reset_done=False)
+
+    await send_data(dut, addr=0xFF, direction=1)
+    assert dut.branch_pred.state_rst_memory.value == 1 # In reset memory state
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 0 # Did not transition to computing state
+    while (dut.mem_reset_done.value != 1):
+        await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.history_buffer.value == 0 # History buffer did not capture the data
+    await send_data(dut, addr=0xFF, direction=1)
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 1 # Transition to computing state
+
+@cocotb.test()
+async def test_new_data_after_mem_rst(dut):
+    start_clock(dut)
+    await reset(dut, wait_for_mem_reset_done=True)
+    dut.new_data_avail.value = 1
+    await RisingEdge(dut.clk)
+    dut.new_data_avail.value = 0
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 1 # In computing state
+
+@cocotb.test()
+async def test_back_to_back_inference(dut):
+    start_clock(dut)
+    await reset(dut, wait_for_mem_reset_done=True)
+    
+    await send_data(dut, addr=0xFF, direction=1)
+    while (dut.training_done.value != 1): # Wait for inference to complete
+        await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 0 # Back to idle state
+
+    await send_data(dut, addr=0xFF, direction=1)
+    await RisingEdge(dut.clk)
+    assert dut.branch_pred.state_pred.value == 1 # In computing state

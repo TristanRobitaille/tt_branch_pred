@@ -1,0 +1,12 @@
+{signal: [
+  {name: 'clk',  	   		 	          wave: 'p..|...|...|'},
+  {name: 'rst_n',  	   		 	        wave: 'h..........|'},
+  {name: 'inst_addr[7:0]', 		      wave: 'x4x|...|.4x|', data: ['addr', 'addr']},
+  {name: 'direction_ground_truth',  wave: 'lhl|...|.hl|'},
+  {name: 'new_data_avail',   	      wave: 'lhl|...|.hl|'},
+  {},
+  
+  {name: 'pred_ready',   	   	      wave: 'l..|.hl|...|'},
+  {name: 'prediction',   	   	      wave: 'l..|.hl|...|'},
+  {name: 'training_done',   	      wave: 'l..|...|hl.|'}
+]}

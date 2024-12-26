@@ -1,0 +1,7 @@
+{signal: [
+  {name: 'clk',   		      wave: 'p..|....'},
+  {name: 'rst_n', 		      wave: 'hlh|....'},
+  {},
+  {name: 'mem_reset_done',  wave: 'l..|.hl.'},
+  {name: 'new_data_avail',  wave: 'l..|..hl'}
+]}

@@ -27,17 +27,12 @@ module tt_um_branch_pred #(
     input  wire       rst_n     // reset_n - low to reset
 );
 
-    /* TODO:
-        -Reset weights?
-    */
-
     //---------------------------------
     //              PINS 
     //---------------------------------
     // All output pins must be assigned. If not used, assign to 0.
     assign uio_out = 8'b0;
 
-    // SPI inputs
     assign uio_oe[0] = 1'b0; // new_data_avail
     assign uio_oe[1] = 1'b0; // direction_ground_truth
     assign uio_oe[7:2] = 'b0;
@@ -46,10 +41,12 @@ module tt_um_branch_pred #(
     assign uo_out[1] = pred_ready;
     assign uo_out[2] = prediction;
     assign uo_out[3] = training_done;
-    assign uo_out[7:4] = 'b0;
+    assign uo_out[4] = mem_reset_done;
+    assign uo_out[7:5] = 'b0;
 
     // List all unused inputs to prevent warnings
-    wire _unused = &{ena, clk, rst_n, 1'b0};
+    wire [7:0] uio_oe_mem_unused, uio_out_unused;
+    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2]};
 
     wire new_data_avail, new_data_avail_posedge;
     wire direction_ground_truth;
@@ -69,13 +66,13 @@ module tt_um_branch_pred #(
     //           PREDICTOR 
     //---------------------------------
     /*
-        The prediction is given by
-        
+        The prediction is given by the sign of the sum of the weights multiplied by the history buffer.
         The starting index (byte) of the weights for a perceptron is given by: (HISTORY_LENGTH + 1) * perceptron_index * (BIT_WIDTH_WEIGHTS/8)
     */
 
     reg wr_en; // 0: Read, 1: Write
     reg prediction, pred_ready, training_done;
+    reg state_rst_memory, mem_reset_done;
     reg [1:0] state_pred;
     reg [7:0] mem_data_in, mem_data_out;
     reg [$clog2(HISTORY_LENGTH+1+1)-1:0] cnt;
@@ -83,6 +80,7 @@ module tt_um_branch_pred #(
     reg [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
     reg [HISTORY_LENGTH:0] history_buffer;
     reg [MEM_ADDR_WIDTH-1:0] mem_addr;
+    parameter NOT_RESETTING_MEM = 1'd0, RESETTING_MEMORY = 1'd1;
     parameter IDLE = 2'd0, COMPUTING = 2'd1, PRE_TRAINING_DELAY = 2'd2, TRAINING = 2'd3;
 
     tt_um_MichaelBell_latch_mem #(
@@ -92,8 +90,8 @@ module tt_um_branch_pred #(
         .uo_out(mem_data_out), // Data output (8b)
         .uio_in(mem_data_in),  // Data input (8b)
         .ena(ena), .clk(clk), .rst_n(rst_n),
-        .uio_out(), // Unused
-        .uio_oe()   // Unused
+        .uio_out(uio_out_unused), // Unused
+        .uio_oe(uio_oe_mem_unused) // Unused
     );
 
     always @ (*) begin
@@ -119,74 +117,89 @@ module tt_um_branch_pred #(
     always @ (posedge clk) begin
         if (!rst_n) begin
             state_pred <= IDLE;
+            mem_addr <= 'd0;
+            mem_reset_done <= 1'b0;
+            wr_en <= 1'b1;
+            state_rst_memory <= RESETTING_MEMORY;
+            mem_data_in <= 'b0;
         end else begin
-            case (state_pred)
-                IDLE: begin
-                    substate <= 'd0;
-                    wr_en <= 1'b0; // Read
-                    training_done <= 1'b0;
-                    pred_ready <= 1'b0;
-                    cnt <= 'd0;
-                    if (new_data_avail_posedge) begin
-                        state_pred <= COMPUTING;
-                        mem_addr <= (perceptron_index << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
-                    end
+            if (state_rst_memory == RESETTING_MEMORY) begin
+                mem_addr <= (wr_en) ? mem_addr : (mem_addr + 1);
+                wr_en <= ~wr_en;
+                if (mem_addr == (STORAGE_B-1)) begin
+                    state_rst_memory <= NOT_RESETTING_MEM;
+                    mem_reset_done <= 1'b1;
                 end
-                COMPUTING: begin
-                    cnt <= cnt + 1;
-                    if (cnt == 'd0) begin
-                        mem_addr <= mem_addr + 1;
-                    end else if (cnt == 'd1) begin // Skip 0 because there is a delay getting SRAM data
-                        sum <= mem_data_out_casted;
-                        mem_addr <= mem_addr + 1;
-                    end else if (cnt < HISTORY_LENGTH+2) begin
-                        sum <= (history_buffer[cnt-2]) ? (sum + mem_data_out_casted) : sum; // If taken, add the weight
-                        mem_addr <= mem_addr + 1;
-                    end else begin
-                        if ((~sum[SUM_WIDTH-1] != direction_ground_truth) | (abs_sum <= TRAINING_THRESHOLD)) begin
-                            state_pred <= PRE_TRAINING_DELAY;
-                            mem_addr <= (perceptron_index << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
-                        end else begin
-                            state_pred <= IDLE;
-                            training_done <= 1'b1;
-                        end
-                        prediction <= ~sum[SUM_WIDTH-1]; // Equivalent to (sum >= 0)
-                        pred_ready <= 1'b1;
+            end else begin
+                mem_reset_done <= 1'b0;
+                case (state_pred)
+                    IDLE: begin
+                        substate <= 'd0;
+                        wr_en <= 1'b0; // Read
+                        training_done <= 1'b0;
+                        pred_ready <= 1'b0;
                         cnt <= 'd0;
-                    end
-                end
-                PRE_TRAINING_DELAY: begin
-                    state_pred <= TRAINING;
-                    pred_ready <= 1'b0;
-                end
-                TRAINING: begin
-                    if (substate == 0) begin // Write
-                        if (cnt == 'd0) begin
-                            mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
-                            substate <= 1;
-                            wr_en <= 1'b1;
-                        end else if (cnt < HISTORY_LENGTH+1) begin
-                            mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1); // If agreement, increment the weight, else decrement
-                            substate <= 1;
-                            wr_en <= 1'b1;
-                        end else begin
-                            state_pred <= IDLE;
-                            training_done <= 1'b1;
+                        if (new_data_avail_posedge) begin
+                            state_pred <= COMPUTING;
+                            mem_addr <= ({(8-$clog2(HISTORY_LENGTH + 1)){perceptron_index}} << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
                         end
-                    end else if (substate == 1) begin
-                        substate <= 2;
-                    end else if (substate == 2) begin // Read
-                        wr_en <= 1'b0;
-                        mem_addr <= mem_addr + 1;
-                        cnt <= cnt + 1;
-                        substate <= 3;
-                    end else if (substate == 3) begin
-                        substate <= 0;
                     end
-                end
-                default:
-                    state_pred <= IDLE;
-            endcase
+                    COMPUTING: begin
+                        cnt <= cnt + 1;
+                        if (cnt == 'd0) begin
+                            mem_addr <= mem_addr + 1;
+                        end else if (cnt == 'd1) begin // Skip 0 because there is a delay getting SRAM data
+                            sum <= mem_data_out_casted;
+                            mem_addr <= mem_addr + 1;
+                        end else if (cnt < HISTORY_LENGTH+2) begin
+                            sum <= (history_buffer[cnt-2]) ? (sum + mem_data_out_casted) : sum; // If taken, add the weight
+                            mem_addr <= mem_addr + 1;
+                        end else begin
+                            if ((~sum[SUM_WIDTH-1] != direction_ground_truth) | (abs_sum <= TRAINING_THRESHOLD)) begin
+                                state_pred <= PRE_TRAINING_DELAY;
+                                mem_addr <= ({(8-$clog2(HISTORY_LENGTH + 1)){perceptron_index}} << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
+                            end else begin
+                                state_pred <= IDLE;
+                                training_done <= 1'b1;
+                            end
+                            prediction <= ~sum[SUM_WIDTH-1]; // Equivalent to (sum >= 0)
+                            pred_ready <= 1'b1;
+                            cnt <= 'd0;
+                        end
+                    end
+                    PRE_TRAINING_DELAY: begin
+                        state_pred <= TRAINING;
+                        pred_ready <= 1'b0;
+                    end
+                    TRAINING: begin
+                        if (substate == 0) begin // Write
+                            if (cnt == 'd0) begin
+                                mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
+                                substate <= 1;
+                                wr_en <= 1'b1;
+                            end else if (cnt < HISTORY_LENGTH+1) begin
+                                mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1); // If agreement, increment the weight, else decrement
+                                substate <= 1;
+                                wr_en <= 1'b1;
+                            end else begin
+                                state_pred <= IDLE;
+                                training_done <= 1'b1;
+                            end
+                        end else if (substate == 1) begin
+                            substate <= 2;
+                        end else if (substate == 2) begin // Read
+                            wr_en <= 1'b0;
+                            mem_addr <= mem_addr + 1;
+                            cnt <= cnt + 1;
+                            substate <= 3;
+                        end else if (substate == 3) begin
+                            substate <= 0;
+                        end
+                    end
+                    default:
+                        state_pred <= IDLE;
+                endcase
+            end
         end
     end
 
