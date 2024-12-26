@@ -14,7 +14,7 @@ from cocotb.triggers import ClockCycles, RisingEdge
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8
 HISTORY_LENGTH = 7
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
-STORAGE_B = 64
+STORAGE_B = 96
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
@@ -83,7 +83,7 @@ def twos_complement_to_int(binary_str, width):
 
 async def check_weights(dut, starting_addr, weights):
     initial_wr_en = dut.DEBUG_wr_en.value
-    initial_mem_addr = dut.branch_pred.mem_addr.value    
+    initial_mem_addr = dut.branch_pred.mem_addr.value
     initial_uio_in = dut.branch_pred.latch_mem.uio_in.value
     await RisingEdge(dut.clk)
 
@@ -93,7 +93,7 @@ async def check_weights(dut, starting_addr, weights):
         await ClockCycles(dut.clk, 2)
         value = str(dut.branch_pred.mem_data_out.value)
         assert twos_complement_to_int(value, len(value)) == weights[i]
-    
+
     dut.DEBUG_wr_en.value = initial_wr_en
     dut.branch_pred.mem_addr.value = initial_mem_addr
     dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
@@ -134,6 +134,10 @@ async def test_send_data(dut):
 
 @cocotb.test(skip=False)
 async def test_perceptron_index(dut):
+    def hash_fcn(addr):
+        hash_val = ((addr >> 2) & 0xFF) ^ ((addr >> 4) & 0xFF)
+        return hash_val & int(NUM_PERCEPTRONS - 1)
+
     NUM_TESTS = 100
     random.seed(42)
 
@@ -144,7 +148,7 @@ async def test_perceptron_index(dut):
         direction = random.randint(0, 1)
         addr = random.randint(0, 2**NUM_BITS_OF_INST_ADDR_LATCHED_IN - 1)
         await send_data(dut, addr, direction)
-        assert int(f"{dut.DEBUG_perceptron_index.value}", base=2) == ((addr >> 2) % NUM_PERCEPTRONS)
+        assert int(f"{dut.DEBUG_perceptron_index.value}", base=2) == hash_fcn(addr)
 
 @cocotb.test(skip=GATES_MODE)
 async def test_history_buffer_internal(dut):
@@ -167,7 +171,7 @@ async def test_history_buffer_internal(dut):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
         assert dut.branch_pred.history_buffer.value == int(binary_str, base=2) # Check history at every inference
-    
+
 @cocotb.test(skip=False)
 async def test_history_buffer_request(dut):
     NUM_TESTS = 100
@@ -188,7 +192,7 @@ async def test_history_buffer_request(dut):
         while (dut.training_done.value != 1):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
-        
+
         dut.history_buffer_request.value = 1
         await RisingEdge(dut.clk)
         dut.history_buffer_request.value = 0
@@ -237,7 +241,7 @@ async def test_perceptron_all_registers(dut):
             # Check the weights (Perform with and without checking the weights)
             if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
                 await check_weights(dut, result['start_addr'], result['weights'])
-            
+
             cnt += 1
             if (MAX_NUM_TESTS != -1) and (cnt >= MAX_NUM_TESTS):
                 break
@@ -312,7 +316,6 @@ async def test_data_ignored_while_resetting(dut):
     await reset(dut, wait_for_mem_reset_done=False)
 
     await send_data(dut, addr=0xFF, direction=1)
-    assert dut.DEBUG_state_rst_memory.value == 1 # In reset memory state
     await RisingEdge(dut.clk)
     assert dut.DEBUG_state_pred.value == 0 # Did not transition to computing state
     while (dut.mem_reset_done.value != 1):
@@ -338,7 +341,7 @@ async def test_new_data_after_mem_rst(dut):
 async def test_back_to_back_inference(dut):
     start_clock(dut)
     await reset(dut, wait_for_mem_reset_done=True)
-    
+
     await send_data(dut, addr=0xFF, direction=1)
     while (dut.training_done.value != 1): # Wait for inference to complete
         await RisingEdge(dut.clk)
@@ -347,4 +350,3 @@ async def test_back_to_back_inference(dut):
     await send_data(dut, addr=0xFF, direction=1)
     await RisingEdge(dut.clk)
     assert dut.DEBUG_state_pred.value == 1 # In computing state
-

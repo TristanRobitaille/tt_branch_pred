@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Thu Dec 26 15:08:27 2024
+[*] Thu Dec 26 19:47:01 2024
 [*]
 [dumpfile] "/Users/tristan/Developer/tt_branch_pred/test/tb.vcd"
-[dumpfile_mtime] "Thu Dec 26 15:08:16 2024"
-[dumpfile_size] 507229
+[dumpfile_mtime] "Thu Dec 26 19:46:56 2024"
+[dumpfile_size] 41558
 [savefile] "/Users/tristan/Developer/tt_branch_pred/test/tb.gtkw"
-[timestart] 0
+[timestart] 16237000
 [size] 3440 1387
 [pos] -1 -1
-*-26.400000 30000000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+*-18.000000 16797000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 [markername] AA
 [markername] BB
 [markername] CC
@@ -38,10 +38,10 @@
 [markername] ZZ
 [treeopen] tb.
 [treeopen] tb.branch_pred.
-[sst_width] 350
+[sst_width] 389
 [signals_width] 317
 [sst_expanded] 1
-[sst_vpaned_height] 389
+[sst_vpaned_height] 334
 @28
 tb.clk
 tb.branch_pred.rst_n
@@ -88,9 +88,9 @@ tb.branch_pred.direction_ground_truth
 -Perceptron
 @22
 tb.branch_pred.cnt[3:0]
-@c00029
+@c00028
 tb.branch_pred.history_buffer[7:0]
-@29
+@28
 (0)tb.branch_pred.history_buffer[7:0]
 (1)tb.branch_pred.history_buffer[7:0]
 (2)tb.branch_pred.history_buffer[7:0]
@@ -99,15 +99,13 @@ tb.branch_pred.history_buffer[7:0]
 (5)tb.branch_pred.history_buffer[7:0]
 (6)tb.branch_pred.history_buffer[7:0]
 (7)tb.branch_pred.history_buffer[7:0]
-@1401201
+@1401200
 -group_end
 @28
 tb.branch_pred.training_done
 tb.branch_pred.pred_ready
 @24
 tb.branch_pred.state_pred[1:0]
-tb.branch_pred.mem_addr[5:0]
-tb.branch_pred.perceptron_index[2:0]
 @200
 -
 -Memory control
@@ -115,8 +113,6 @@ tb.branch_pred.perceptron_index[2:0]
 tb.mem_reset_done
 tb.branch_pred.state_rst_memory
 tb.branch_pred.wr_en
-@24
-tb.branch_pred.mem_addr[5:0]
 @22
 tb.branch_pred.mem_data_in[7:0]
 tb.branch_pred.mem_data_out[7:0]
@@ -131,5 +127,17 @@ tb.branch_pred.history_buffer_index[2:0]
 tb.branch_pred.history_buffer_output
 tb.branch_pred.history_buffer_request
 tb.branch_pred.history_buffer_request_posedge
+@200
+-
+-Debug
+@28
+tb.DEBUG_history_buffer_output
+tb.DEBUG_new_data_avail_posedge
+@25
+tb.DEBUG_perceptron_index[2:0]
+@28
+tb.DEBUG_state_pred[1:0]
+tb.DEBUG_state_rst_memory
+tb.DEBUG_wr_en
 [pattern_trace] 1
 [pattern_trace] 0
