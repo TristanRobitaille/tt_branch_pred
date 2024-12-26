@@ -8,7 +8,7 @@ import subprocess
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
 
 #----- CONSTANTS -----#
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8
@@ -20,6 +20,9 @@ NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
 GATES_MODE = (os.getenv("GL_SIM") == "yes")
 print(f"Running gate-level simulation: {GATES_MODE}")
+
+CLK_FREQ_MHZ = 10
+TWO_HUNDRED_CLK_CYCLES = 200 * (1 / CLK_FREQ_MHZ)
 
 #----- HELPERS -----#
 async def reset(dut, wait_for_mem_reset_done=True):
@@ -34,11 +37,10 @@ async def reset(dut, wait_for_mem_reset_done=True):
     await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
     if wait_for_mem_reset_done:
-        while (dut.mem_reset_done.value != 1):
-            await RisingEdge(dut.clk)
+        await with_timeout(RisingEdge(dut.mem_reset_done), TWO_HUNDRED_CLK_CYCLES, 'us')
 
 def start_clock(dut):
-    clock = Clock(dut.clk, 100, units="ns") # 10MHz
+    clock = Clock(dut.clk, 1/CLK_FREQ_MHZ, units="us")
     cocotb.start_soon(clock.start())
 
 async def send_data(dut, addr, direction, hold_data_avail=False):
@@ -167,9 +169,7 @@ async def test_history_buffer_internal(dut):
         binary_str = ''.join(str(x) for x in history_buffer)
 
         await send_data(dut, addr=0, direction=direction)
-        while (dut.training_done.value != 1):
-            await RisingEdge(dut.clk)
-        await RisingEdge(dut.clk)
+        await with_timeout(RisingEdge(dut.training_done), TWO_HUNDRED_CLK_CYCLES, 'us')
         assert dut.branch_pred.history_buffer.value == int(binary_str, base=2) # Check history at every inference
 
 @cocotb.test(skip=False)
@@ -189,8 +189,7 @@ async def test_history_buffer_request(dut):
         binary_str = ''.join(str(x) for x in history_buffer)
 
         await send_data(dut, addr=0, direction=direction)
-        while (dut.training_done.value != 1):
-            await RisingEdge(dut.clk)
+        await with_timeout(RisingEdge(dut.training_done), TWO_HUNDRED_CLK_CYCLES, 'us')
         await RisingEdge(dut.clk)
 
         dut.history_buffer_request.value = 1
@@ -229,14 +228,14 @@ async def test_perceptron_all_registers(dut):
             if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
                 assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr'] # Check memory addr
 
-            while (dut.pred_ready.value != 1):
-                await RisingEdge(dut.clk)
+            await with_timeout(RisingEdge(dut.pred_ready), TWO_HUNDRED_CLK_CYCLES, 'us')
+
             assert dut.prediction.value == result['prediction']
             if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
                 assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
 
-            while (dut.training_done.value != 1):
-                await RisingEdge(dut.clk)
+            if (dut.training_done.value == 0):
+                await with_timeout(RisingEdge(dut.training_done), TWO_HUNDRED_CLK_CYCLES, 'us')
 
             # Check the weights (Perform with and without checking the weights)
             if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
@@ -264,8 +263,8 @@ async def test_new_data_ignored_if_training(dut):
     await reset(dut)
 
     await send_data(dut, addr=0xFF, direction=1)
-    while (dut.pred_ready.value != 1): # Wait for inference to complete
-        await RisingEdge(dut.clk)
+    await with_timeout(RisingEdge(dut.pred_ready), TWO_HUNDRED_CLK_CYCLES, 'us')
+    await RisingEdge(dut.clk)
     assert dut.training_done.value == 0 # Not done training
     assert dut.DEBUG_state_pred.value == 2 # In pre-training delay state
     await RisingEdge(dut.clk)
@@ -273,8 +272,9 @@ async def test_new_data_ignored_if_training(dut):
     await RisingEdge(dut.clk)
     await send_data(dut, addr=0xFF, direction=1)
     assert dut.DEBUG_state_pred.value == 3 # Still in training state
-    while (dut.training_done.value != 1):
-        await RisingEdge(dut.clk)
+
+    await with_timeout(RisingEdge(dut.training_done), TWO_HUNDRED_CLK_CYCLES, 'us')
+    await RisingEdge(dut.clk)
     assert dut.DEBUG_state_pred.value == 0 # Back to idle state
     await RisingEdge(dut.clk)
     if (not GATES_MODE):
@@ -318,9 +318,7 @@ async def test_data_ignored_while_resetting(dut):
     await send_data(dut, addr=0xFF, direction=1)
     await RisingEdge(dut.clk)
     assert dut.DEBUG_state_pred.value == 0 # Did not transition to computing state
-    while (dut.mem_reset_done.value != 1):
-        await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
+    await with_timeout(RisingEdge(dut.mem_reset_done), TWO_HUNDRED_CLK_CYCLES, 'us')
     if (not GATES_MODE):
         assert dut.branch_pred.history_buffer.value == 0 # History buffer did not capture the data
     await send_data(dut, addr=0xFF, direction=1)
@@ -343,8 +341,7 @@ async def test_back_to_back_inference(dut):
     await reset(dut, wait_for_mem_reset_done=True)
 
     await send_data(dut, addr=0xFF, direction=1)
-    while (dut.training_done.value != 1): # Wait for inference to complete
-        await RisingEdge(dut.clk)
+    await with_timeout(RisingEdge(dut.training_done), TWO_HUNDRED_CLK_CYCLES, 'us')
     assert dut.DEBUG_state_pred.value == 0 # Back to idle state
 
     await send_data(dut, addr=0xFF, direction=1)
