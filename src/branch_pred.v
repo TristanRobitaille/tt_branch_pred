@@ -52,7 +52,7 @@ module tt_um_branch_pred #(
 
     // List all unused inputs to prevent warnings
     wire [7:0] uio_oe_mem_unused, uio_out_unused;
-    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2]};
+    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2], hash_index[31:PERCEPTRON_INDEX_WIDTH]};
 
     wire new_data_avail, new_data_avail_posedge;
     wire direction_ground_truth;
@@ -101,8 +101,9 @@ module tt_um_branch_pred #(
         .uio_oe(uio_oe_mem_unused) // Unused
     );
 
-    // assign perceptron_index = (((inst_addr >> 2) ^ (inst_addr >> 4)) & (NUM_PERCEPTRONS - 1))[PERCEPTRON_INDEX_WIDTH:0];
-    assign perceptron_index = ((inst_addr >> 2) ^ (inst_addr >> 4)) & (NUM_PERCEPTRONS - 1);
+    wire [31:0] hash_index;
+    assign hash_index = (({{24'b0, inst_addr}} >> 2) ^ ({{24'b0, inst_addr}} >> 4)) & (NUM_PERCEPTRONS - 1);
+    assign perceptron_index = hash_index[PERCEPTRON_INDEX_WIDTH-1:0];
 
     always @ (posedge clk) begin
         if (!rst_n) begin
@@ -147,31 +148,41 @@ module tt_um_branch_pred #(
                         cnt <= 'd0;
                         if (new_data_avail_posedge) begin
                             state_pred <= COMPUTING;
-                            mem_addr <= {{(8-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
+                            mem_addr <= {{(MEM_ADDR_WIDTH-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
                         end
                     end
                     COMPUTING: begin
                         cnt <= cnt + 1;
-                        if (cnt == 'd0) begin
-                            mem_addr <= mem_addr + 1;
-                        end else if (cnt == 'd1) begin // Skip 0 because there is a delay getting SRAM data
-                            sum <= mem_data_out_casted;
-                            mem_addr <= mem_addr + 1;
-                        end else if (cnt < HISTORY_LENGTH+2) begin
-                            sum <= (history_buffer[cnt-2]) ? (sum + mem_data_out_casted) : sum; // If taken, add the weight
-                            mem_addr <= mem_addr + 1;
-                        end else begin
-                            if ((~sum[SUM_WIDTH-1] != direction_ground_truth) | (abs_sum <= TRAINING_THRESHOLD)) begin
-                                state_pred <= PRE_TRAINING_DELAY;
-                                mem_addr <= {{(8-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
-                            end else begin
-                                state_pred <= IDLE;
-                                training_done <= 1'b1;
+                        case (cnt)
+                            'd0: mem_addr <= mem_addr + 1;
+                            'd1: begin
+                                sum <= mem_data_out_casted;
+                                mem_addr <= mem_addr + 1;
                             end
-                            prediction <= ~sum[SUM_WIDTH-1]; // Equivalent to (sum >= 0)
-                            pred_ready <= 1'b1;
-                            cnt <= 'd0;
-                        end
+                            default: begin
+                                if (cnt < HISTORY_LENGTH) mem_addr <= mem_addr + 1;
+
+                                if (cnt < HISTORY_LENGTH+2) begin
+                                    if (history_buffer[cnt-2]) begin
+                                        sum <= sum + mem_data_out_casted;
+                                    end
+
+                                end else begin
+                                    // Prediction was wrong or confidence too low - need training
+                                    if ((~sum[SUM_WIDTH-1] != direction_ground_truth) || (abs_sum <= TRAINING_THRESHOLD)) begin
+                                        state_pred <= PRE_TRAINING_DELAY;
+                                    end else begin // Prediction correct with sufficient confidence
+                                        state_pred <= IDLE;
+                                        training_done <= 1'b1;
+                                    end
+
+                                    mem_addr <= {{(MEM_ADDR_WIDTH-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Reset address to start of perceptron's weight table
+                                    prediction <= ~sum[SUM_WIDTH-1];
+                                    pred_ready <= 1'b1;
+                                    cnt <= 'd0;
+                                end
+                            end
+                        endcase
                     end
                     PRE_TRAINING_DELAY: begin
                         state_pred <= TRAINING;
@@ -194,8 +205,8 @@ module tt_um_branch_pred #(
                         end else if (substate == 1) begin
                             substate <= 2;
                         end else if (substate == 2) begin // Read
+                            if (cnt < HISTORY_LENGTH) mem_addr <= mem_addr + 1;
                             wr_en <= 1'b0;
-                            mem_addr <= mem_addr + 1;
                             cnt <= cnt + 1;
                             substate <= 3;
                         end else if (substate == 3) begin

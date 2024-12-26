@@ -38,6 +38,7 @@ async def reset(dut, wait_for_mem_reset_done=True):
     dut.rst_n.value = 1
     if wait_for_mem_reset_done:
         await with_timeout(RisingEdge(dut.mem_reset_done), ONE_THOUSAND_CLK_CYCLES, 'us')
+    await ClockCycles(dut.clk, 5)
 
 def start_clock(dut):
     clock = Clock(dut.clk, 1/CLK_FREQ_MHZ, units="us")
@@ -99,6 +100,13 @@ async def check_weights(dut, starting_addr, weights):
     dut.DEBUG_wr_en.value = initial_wr_en
     dut.branch_pred.mem_addr.value = initial_mem_addr
     dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
+
+async def monitor_mem_addr(dut):
+    """Monitor memory address to ensure it stays within bounds"""
+    while True:
+        await RisingEdge(dut.clk)
+        if not GATES_MODE:  # Only check when not in reset
+            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) < STORAGE_B
 
 # ----- TESTS -----#
 @cocotb.test(skip=False)
@@ -203,12 +211,8 @@ async def test_history_buffer_request(dut):
 @cocotb.test(skip=False)
 async def test_perceptron_all_registers(dut):
     MAX_NUM_TESTS = -1
-    cnt = 0
-    start_clock(dut)
-    await reset(dut)
 
     # Run functional sim and capture output
-    # Make functional sim
     os.chdir("../func_sim")
     subprocess.run(["cmake", "CMakeLists.txt"], check=True)
     subprocess.run(["make"], check=True)
@@ -216,6 +220,14 @@ async def test_perceptron_all_registers(dut):
     cmd = ["../func_sim/build/func_sim", "../func_sim/spike_log.txt"]
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
     stdout = process.communicate()
+
+    start_clock(dut)
+    await reset(dut)
+
+    # Start memory address monitor
+    monitor = cocotb.start_soon(monitor_mem_addr(dut))
+
+    cnt = 0
     for line in stdout[0].splitlines():
         if line.startswith("Branch address:"):
             result = parse_branch_log(line)
@@ -230,7 +242,18 @@ async def test_perceptron_all_registers(dut):
 
             await with_timeout(RisingEdge(dut.pred_ready), ONE_THOUSAND_CLK_CYCLES, 'us')
 
-            assert dut.prediction.value == result['prediction']
+            try:
+                assert dut.prediction.value == result['prediction']
+            except AssertionError:
+                print(f"\nPrediction mismatch:")
+                print(f"Hash Index: {int(f'{dut.DEBUG_perceptron_index.value}', base=2)}")
+                if (not GATES_MODE):
+                    print(f"Sum: {twos_complement_to_int(f'{dut.branch_pred.sum.value}', width=len(dut.branch_pred.sum.value))}")
+                print(f"Ground truth direction: {direction}")
+                print(f"Expected prediction: {result['prediction']}")
+                print(f"Actual prediction: {dut.prediction.value}\n")
+                raise
+
             if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
                 assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
 

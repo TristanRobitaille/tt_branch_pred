@@ -31,6 +31,7 @@ module tb ();
   
   assign uio_in[0] = new_data_avail;
   assign uio_in[1] = direction_ground_truth;
+  assign uio_in[6:2] = 'b0;
   assign uio_in[7] = history_buffer_request;
   assign ui_in = inst_lowest_byte;
   
