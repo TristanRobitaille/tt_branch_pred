@@ -43,14 +43,14 @@ pinout:
   uo[7]: "DEBUG_state_rst_mem"
 
   # Bidirectional pins
-  uio[0]: "new_data_avail"            # Input
-  uio[1]: "direction_ground_truth"    # Input
-  uio[2]: "DEBUG_perceptron_index[0]" # Output
-  uio[3]: "DEBUG_perceptron_index[1]" # Output
-  uio[4]: "DEBUG_perceptron_index[2]" # Output
-  uio[5]: "DEBUG_wr_en"               # Output
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "new_data_avail"              # Input
+  uio[1]: "direction_ground_truth"      # Input
+  uio[2]: "DEBUG_perceptron_index[0]"   # Output
+  uio[3]: "DEBUG_perceptron_index[1]"   # Output
+  uio[4]: "DEBUG_perceptron_index[2]"   # Output
+  uio[5]: "DEBUG_wr_en"                 # Output
+  uio[6]: "DEBUG_history_buffer_output" # Output
+  uio[7]: "history_buffer_request"      # Input
 
 # Do not change!
 yaml_version: 6

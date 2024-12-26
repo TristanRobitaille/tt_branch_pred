@@ -28,6 +28,7 @@ async def reset(dut, wait_for_mem_reset_done=True):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.new_data_avail.value = 0
+    dut.history_buffer_request.value = 0
     dut.direction_ground_truth.value = 0
     dut.inst_lowest_byte.value = 0
     await ClockCycles(dut.clk, 5)
@@ -102,7 +103,7 @@ async def check_weights(dut, starting_addr, weights):
 async def test_constants(dut):
     start_clock(dut)
     await RisingEdge(dut.clk)
-    assert str(dut.uio_oe.value) == "00111100"
+    assert str(dut.uio_oe.value) == "01111100"
 
 @cocotb.test(skip=False)
 async def test_new_data_avail_signals(dut):
@@ -146,10 +147,10 @@ async def test_perceptron_index(dut):
         assert int(f"{dut.DEBUG_perceptron_index.value}", base=2) == ((addr >> 2) % NUM_PERCEPTRONS)
 
 @cocotb.test(skip=GATES_MODE)
-async def test_history_buffer(dut):
-    NUM_TESTS = -1
+async def test_history_buffer_internal(dut):
+    NUM_TESTS = 100
     random.seed(42)
-    history_buffer = [0] * HISTORY_LENGTH
+    history_buffer = [0] * (HISTORY_LENGTH + 1)
 
     start_clock(dut)
     await reset(dut)
@@ -165,7 +166,36 @@ async def test_history_buffer(dut):
         while (dut.training_done.value != 1):
             await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
-        assert dut.branch_pred.history_buffer.value == int(binary_str, base=2)
+        assert dut.branch_pred.history_buffer.value == int(binary_str, base=2) # Check history at every inference
+    
+@cocotb.test(skip=False)
+async def test_history_buffer_request(dut):
+    NUM_TESTS = 100
+    random.seed(42)
+    history_buffer = [0] * (HISTORY_LENGTH + 1)
+
+    start_clock(dut)
+    await reset(dut)
+
+    for _ in range(NUM_TESTS):
+        direction = random.randint(0, 1)
+        # Make FIFO-like history buffer
+        history_buffer.pop(0)
+        history_buffer.append(direction)
+        binary_str = ''.join(str(x) for x in history_buffer)
+
+        await send_data(dut, addr=0, direction=direction)
+        while (dut.training_done.value != 1):
+            await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        
+        dut.history_buffer_request.value = 1
+        await RisingEdge(dut.clk)
+        dut.history_buffer_request.value = 0
+
+        for i in range(HISTORY_LENGTH + 1):
+            await RisingEdge(dut.clk)
+            assert dut.DEBUG_history_buffer_output.value == history_buffer[HISTORY_LENGTH - i]
 
 @cocotb.test(skip=False)
 async def test_perceptron_all_registers(dut):
@@ -317,3 +347,4 @@ async def test_back_to_back_inference(dut):
     await send_data(dut, addr=0xFF, direction=1)
     await RisingEdge(dut.clk)
     assert dut.DEBUG_state_pred.value == 1 # In computing state
+

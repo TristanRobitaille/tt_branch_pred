@@ -34,13 +34,15 @@ module tt_um_branch_pred #(
     assign uio_out[PERCEPTRON_INDEX_WIDTH-1+2:2] = perceptron_index; // Debug
     assign uio_out[1:0] = 'h0;
     assign uio_out[PERCEPTRON_INDEX_WIDTH+2] = wr_en; // Debug
-    assign uio_out[7:PERCEPTRON_INDEX_WIDTH+2+1] = 'h0; // Input
+    assign uio_out[PERCEPTRON_INDEX_WIDTH+2+1] = history_buffer_output; // Input
+    assign uio_out[7:PERCEPTRON_INDEX_WIDTH+2+2] = 'b0; // Input
 
     assign uio_oe[0] = 1'b0; // new_data_avail
     assign uio_oe[1] = 1'b0; // direction_ground_truth
     assign uio_oe[PERCEPTRON_INDEX_WIDTH-1+2:2] = 'hFFF; // Output perceptron index
     assign uio_oe[PERCEPTRON_INDEX_WIDTH+2] = 'hFFF; // Output wr_en
-    assign uio_oe[7:PERCEPTRON_INDEX_WIDTH+2+1] = 'h0; // Input
+    assign uio_oe[7:PERCEPTRON_INDEX_WIDTH+2+1] = 'h1; // History buffer output
+    assign uio_oe[7:PERCEPTRON_INDEX_WIDTH+2+2] = 'h0; // History buffer request
 
     assign uo_out[0] = pred_ready;
     assign uo_out[1] = prediction;
@@ -61,6 +63,7 @@ module tt_um_branch_pred #(
 
     assign new_data_avail = uio_in[0];
     assign direction_ground_truth = uio_in[1];
+    assign history_buffer_request = uio_in[7];
     assign new_data_avail_posedge = (new_data_avail & ~new_data_avail_prev);
     assign inst_addr = ui_in;
 
@@ -208,5 +211,48 @@ module tt_um_branch_pred #(
             end
         end
     end
+
+    //---------------------------------
+    //           HISTORY 
+    //---------------------------------
+    /*
+        Can request the history buffer to be outputted to the IOs. Useful for debugging.
+    */
+    reg history_buffer_empty_state, history_buffer_output;
+    reg history_buffer_request, history_buffer_request_prev;
+    reg [$clog2(HISTORY_LENGTH+1)-1:0] history_buffer_index;
+    localparam HISTORY_BUFFER_NOT_OUTPUTTING = 1'b0, HISTORY_BUFFER_OUTPUTTING = 1'b1;
+
+    wire history_buffer_request_posedge;
+    assign history_buffer_request_posedge = (history_buffer_request & ~history_buffer_request_prev);
+
+    always @ (posedge clk) begin
+        history_buffer_request_prev <= history_buffer_request;
+        if (!rst_n) begin
+            history_buffer_empty_state <= 1'b0;
+            history_buffer_index <= HISTORY_BUFFER_NOT_OUTPUTTING;
+            history_buffer_output <= 1'b0;
+        end else begin
+            case (history_buffer_empty_state)
+                HISTORY_BUFFER_NOT_OUTPUTTING: begin
+                    history_buffer_index <= 'd0;
+                    if (history_buffer_request_posedge) begin
+                        history_buffer_empty_state <= HISTORY_BUFFER_OUTPUTTING;
+                        history_buffer_output <= history_buffer[0];
+                    end else begin
+                        history_buffer_output <= 'b0;
+                    end
+                end
+                HISTORY_BUFFER_OUTPUTTING: begin
+                    history_buffer_index <= history_buffer_index + 1;
+                    history_buffer_empty_state <= (history_buffer_index == HISTORY_LENGTH-1) ? HISTORY_BUFFER_NOT_OUTPUTTING : HISTORY_BUFFER_OUTPUTTING;
+                    history_buffer_output <= history_buffer[history_buffer_index+1];
+                end
+                default: 
+                    history_buffer_empty_state <= HISTORY_BUFFER_NOT_OUTPUTTING;
+            endcase
+        end
+    end
+
 
 endmodule
