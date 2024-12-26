@@ -9,7 +9,7 @@ module tt_um_branch_pred #(
     parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8,
     parameter HISTORY_LENGTH = 7, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
-    parameter STORAGE_B = 64, // If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter STORAGE_B = 96, // If larger than 2^7, will need to modify memory since max. address is 7 bits
     parameter MEM_ADDR_WIDTH = $clog2(STORAGE_B),
     parameter STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS),
     parameter NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON),
@@ -31,26 +31,24 @@ module tt_um_branch_pred #(
     //              PINS 
     //---------------------------------
     // All output pins must be assigned. If not used, assign to 0.
+    assign uio_out[1:0] = 'b0; // Inputs so tie this to 0
     assign uio_out[PERCEPTRON_INDEX_WIDTH-1+2:2] = perceptron_index; // Debug
-    assign uio_out[1:0] = 'h0;
-    assign uio_out[PERCEPTRON_INDEX_WIDTH+2] = wr_en; // Debug
-    assign uio_out[PERCEPTRON_INDEX_WIDTH+2+1] = history_buffer_output; // Input
-    assign uio_out[7:PERCEPTRON_INDEX_WIDTH+2+2] = 'b0; // Input
+    assign uio_out[PERCEPTRON_INDEX_WIDTH+2] = history_buffer_output; // Debug
+    assign uio_out[PERCEPTRON_INDEX_WIDTH+2+1] = 'b0; // Input
 
     assign uio_oe[0] = 1'b0; // new_data_avail
     assign uio_oe[1] = 1'b0; // direction_ground_truth
-    assign uio_oe[PERCEPTRON_INDEX_WIDTH-1+2:2] = 'hFFF; // Output perceptron index
-    assign uio_oe[PERCEPTRON_INDEX_WIDTH+2] = 'hFFF; // Output wr_en
-    assign uio_oe[7:PERCEPTRON_INDEX_WIDTH+2+1] = 'h1; // History buffer output
-    assign uio_oe[7:PERCEPTRON_INDEX_WIDTH+2+2] = 'h0; // History buffer request
+    assign uio_oe[PERCEPTRON_INDEX_WIDTH-1+2:2] = 'hFFF; // Perceptron index output
+    assign uio_oe[PERCEPTRON_INDEX_WIDTH+2] = 'hF; // History buffer output
+    assign uio_oe[PERCEPTRON_INDEX_WIDTH+2+1] = 1'b0; // History buffer request
 
     assign uo_out[0] = pred_ready;
     assign uo_out[1] = prediction;
     assign uo_out[2] = training_done;
     assign uo_out[3] = mem_reset_done;
-    assign uo_out[4] = new_data_avail_posedge; // Debug
-    assign uo_out[6:5] = state_pred; // Debug
-    assign uo_out[7] = state_rst_memory; // Debug
+    assign uo_out[4] = new_data_avail_posedge;
+    assign uo_out[6:5] = state_pred;
+    assign uo_out[7] = wr_en;
 
     // List all unused inputs to prevent warnings
     wire [7:0] uio_oe_mem_unused, uio_out_unused;
@@ -103,9 +101,7 @@ module tt_um_branch_pred #(
         .uio_oe(uio_oe_mem_unused) // Unused
     );
 
-    always @ (*) begin
-        perceptron_index = inst_addr[PERCEPTRON_INDEX_WIDTH-1 + 2 : 2]; // Implements (inst_addr >> 2) % NUM_PERCEPTRONS
-    end
+    assign perceptron_index = ((inst_addr >> 2) ^ (inst_addr >> 4)) & (NUM_PERCEPTRONS - 1);
 
     always @ (posedge clk) begin
         if (!rst_n) begin
@@ -229,9 +225,9 @@ module tt_um_branch_pred #(
     always @ (posedge clk) begin
         history_buffer_request_prev <= history_buffer_request;
         if (!rst_n) begin
-            history_buffer_empty_state <= 1'b0;
-            history_buffer_index <= HISTORY_BUFFER_NOT_OUTPUTTING;
-            history_buffer_output <= 1'b0;
+            history_buffer_empty_state <= HISTORY_BUFFER_NOT_OUTPUTTING;
+            history_buffer_index <= 'd0;
+            history_buffer_output <= 'd0;
         end else begin
             case (history_buffer_empty_state)
                 HISTORY_BUFFER_NOT_OUTPUTTING: begin

@@ -81,7 +81,9 @@ BranchPredictor::BranchPredictor() : perceptrons(NUM_PERCEPTRONS), global_histor
 }
 
 uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
-    return (branch_address >> 2) % NUM_PERCEPTRONS;
+    uint32_t hash = ((branch_address >> 2) & 0xFF) ^
+                    ((branch_address >> 4) & 0xFF);
+    return hash & (NUM_PERCEPTRONS - 1);
 }
 
 void BranchPredictor::predict(uint32_t branch_address, bool* pred, int* y_sum, int* hash_index) {
@@ -119,6 +121,7 @@ int main(int argc, char** argv) {
     }
 
     cout << "NUM_PERCEPTRONS: " << NUM_PERCEPTRONS << endl;
+    cout << "STORAGE_B: " << STORAGE_B << endl;
     cout << "STORAGE_PER_PERCEPTRON: " << STORAGE_PER_PERCEPTRON << endl;
     cout << "WEIGHT_MAX: " << WEIGHT_MAX << endl;
 
