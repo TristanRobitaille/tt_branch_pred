@@ -14,7 +14,10 @@ module tb ();
   wire [7:0] inst_lowest_byte;
 
   // Output
-  wire new_data_avail_posedge, pred_ready, prediction, training_done, mem_reset_done;
+  wire DEBUG_new_data_avail_posedge, DEBUG_state_rst_memory, DEBUG_wr_en;
+  wire [1:0] DEBUG_state_pred;
+  wire [2:0] DEBUG_perceptron_index;
+  wire pred_ready, prediction, training_done, mem_reset_done;
 
   // Other signals
   reg clk;
@@ -30,11 +33,17 @@ module tb ();
   assign uio_in[1] = direction_ground_truth;
   assign ui_in = inst_lowest_byte;
   
-  assign new_data_avail_posedge = uo_out[0];
-  assign pred_ready = uo_out[1];
-  assign prediction = uo_out[2];
-  assign training_done = uo_out[3];
-  assign mem_reset_done = uo_out[4];
+  assign pred_ready = uo_out[0];
+  assign prediction = uo_out[1];
+  assign training_done = uo_out[2];
+  assign mem_reset_done = uo_out[3];
+
+  assign DEBUG_new_data_avail_posedge = uo_out[4];
+  assign DEBUG_state_pred = uo_out[6:5];
+  assign DEBUG_state_rst_memory = uo_out[7];
+
+  assign DEBUG_perceptron_index = uio_out[4:2];
+  assign DEBUG_wr_en = uio_out[5];
 
 `ifdef GL_TEST
   wire VPWR = 1'b1;
