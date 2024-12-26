@@ -250,5 +250,4 @@ module tt_um_branch_pred #(
         end
     end
 
-
 endmodule
