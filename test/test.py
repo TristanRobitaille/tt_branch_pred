@@ -202,7 +202,7 @@ async def test_history_buffer_request(dut):
 
 @cocotb.test(skip=False)
 async def test_perceptron_all_registers(dut):
-    MAX_NUM_TESTS = 300
+    MAX_NUM_TESTS = -1
     cnt = 0
     start_clock(dut)
     await reset(dut)

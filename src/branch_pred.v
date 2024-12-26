@@ -28,7 +28,7 @@ module tt_um_branch_pred #(
 );
 
     //---------------------------------
-    //              PINS 
+    //              PINS
     //---------------------------------
     // All output pins must be assigned. If not used, assign to 0.
     assign uio_out[1:0] = 'b0; // Inputs so tie this to 0
@@ -38,8 +38,8 @@ module tt_um_branch_pred #(
 
     assign uio_oe[0] = 1'b0; // new_data_avail
     assign uio_oe[1] = 1'b0; // direction_ground_truth
-    assign uio_oe[PERCEPTRON_INDEX_WIDTH-1+2:2] = 'hFFF; // Perceptron index output
-    assign uio_oe[PERCEPTRON_INDEX_WIDTH+2] = 'hF; // History buffer output
+    assign uio_oe[PERCEPTRON_INDEX_WIDTH-1+2:2] = {PERCEPTRON_INDEX_WIDTH{1'b1}}; // Perceptron index output
+    assign uio_oe[PERCEPTRON_INDEX_WIDTH+2] = 1'b1; // History buffer output
     assign uio_oe[PERCEPTRON_INDEX_WIDTH+2+1] = 1'b0; // History buffer request
 
     assign uo_out[0] = pred_ready;
@@ -70,7 +70,7 @@ module tt_um_branch_pred #(
     end
 
     //---------------------------------
-    //           PREDICTOR 
+    //           PREDICTOR
     //---------------------------------
     /*
         The prediction is given by the sign of the sum of the weights multiplied by the history buffer.
@@ -84,9 +84,9 @@ module tt_um_branch_pred #(
     reg [7:0] mem_data_in, mem_data_out;
     reg [$clog2(HISTORY_LENGTH+1+1)-1:0] cnt;
     reg [SUM_WIDTH-1:0] sum;
-    reg [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
     reg [HISTORY_LENGTH:0] history_buffer;
     reg [MEM_ADDR_WIDTH-1:0] mem_addr;
+    wire [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
     parameter NOT_RESETTING_MEM = 1'd0, RESETTING_MEMORY = 1'd1;
     parameter IDLE = 2'd0, COMPUTING = 2'd1, PRE_TRAINING_DELAY = 2'd2, TRAINING = 2'd3;
 
@@ -101,6 +101,7 @@ module tt_um_branch_pred #(
         .uio_oe(uio_oe_mem_unused) // Unused
     );
 
+    // assign perceptron_index = (((inst_addr >> 2) ^ (inst_addr >> 4)) & (NUM_PERCEPTRONS - 1))[PERCEPTRON_INDEX_WIDTH:0];
     assign perceptron_index = ((inst_addr >> 2) ^ (inst_addr >> 4)) & (NUM_PERCEPTRONS - 1);
 
     always @ (posedge clk) begin
@@ -146,7 +147,7 @@ module tt_um_branch_pred #(
                         cnt <= 'd0;
                         if (new_data_avail_posedge) begin
                             state_pred <= COMPUTING;
-                            mem_addr <= ({(8-$clog2(HISTORY_LENGTH + 1)){perceptron_index}} << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
+                            mem_addr <= {{(8-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
                         end
                     end
                     COMPUTING: begin
@@ -162,7 +163,7 @@ module tt_um_branch_pred #(
                         end else begin
                             if ((~sum[SUM_WIDTH-1] != direction_ground_truth) | (abs_sum <= TRAINING_THRESHOLD)) begin
                                 state_pred <= PRE_TRAINING_DELAY;
-                                mem_addr <= ({(8-$clog2(HISTORY_LENGTH + 1)){perceptron_index}} << $clog2(HISTORY_LENGTH + 1)); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
+                                mem_addr <= {{(8-PERCEPTRON_INDEX_WIDTH){1'b0}}, perceptron_index} << $clog2(HISTORY_LENGTH + 1); // Bit shift instead of multiply since (HISTORY_LENGTH + 1) is a power of 2
                             end else begin
                                 state_pred <= IDLE;
                                 training_done <= 1'b1;
@@ -209,17 +210,17 @@ module tt_um_branch_pred #(
     end
 
     //---------------------------------
-    //           HISTORY 
+    //           HISTORY
     //---------------------------------
     /*
         Can request the history buffer to be outputted to the IOs. Useful for debugging.
     */
     reg history_buffer_empty_state, history_buffer_output;
-    reg history_buffer_request, history_buffer_request_prev;
+    reg history_buffer_request_prev;
     reg [$clog2(HISTORY_LENGTH+1)-1:0] history_buffer_index;
     localparam HISTORY_BUFFER_NOT_OUTPUTTING = 1'b0, HISTORY_BUFFER_OUTPUTTING = 1'b1;
 
-    wire history_buffer_request_posedge;
+    wire history_buffer_request, history_buffer_request_posedge;
     assign history_buffer_request_posedge = (history_buffer_request & ~history_buffer_request_prev);
 
     always @ (posedge clk) begin
@@ -244,7 +245,7 @@ module tt_um_branch_pred #(
                     history_buffer_empty_state <= (history_buffer_index == HISTORY_LENGTH-1) ? HISTORY_BUFFER_NOT_OUTPUTTING : HISTORY_BUFFER_OUTPUTTING;
                     history_buffer_output <= history_buffer[history_buffer_index+1];
                 end
-                default: 
+                default:
                     history_buffer_empty_state <= HISTORY_BUFFER_NOT_OUTPUTTING;
             endcase
         end
