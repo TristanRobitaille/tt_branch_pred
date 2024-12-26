@@ -9,13 +9,13 @@ module tt_um_branch_pred #(
     parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 16,
     parameter HISTORY_LENGTH = 7, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
-    parameter STORAGE_B = 128, // If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter STORAGE_B = 64, // If larger than 2^7, will need to modify memory since max. address is 7 bits
     parameter MEM_ADDR_WIDTH = $clog2(STORAGE_B),
     parameter STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS),
     parameter NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON),
     parameter PERCEPTRON_INDEX_WIDTH = $clog2(NUM_PERCEPTRONS), // Must be wide enough to store NUM_PERCEPTRONS
     parameter SUM_WIDTH = $clog2(HISTORY_LENGTH * (1 << (BIT_WIDTH_WEIGHTS-1))),
-    parameter TRAINING_THRESHOLD = 100
+    parameter TRAINING_THRESHOLD = 15
 )(
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs

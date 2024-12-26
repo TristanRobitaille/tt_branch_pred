@@ -15,11 +15,11 @@
 
 // Branch predictor
 #define HISTORY_LENGTH 7 // Must be power of 2 - 1
-#define TRAINING_THRESHOLD 100 // + 2*HISTORY_LENGTH
+#define TRAINING_THRESHOLD 15
 #define BIT_WIDTH_WEIGHTS 8 // Must be 2, 4 or 8 so that we can store it in one byte
 #define BIT_WIDTH_Y (int)ceil(log2(HISTORY_LENGTH * (1 << (BIT_WIDTH_WEIGHTS-1))))
 
-#define STORAGE_B 128
+#define STORAGE_B 64
 #define STORAGE_PER_PERCEPTRON ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 #define NUM_PERCEPTRONS (int)floor(8 * STORAGE_B / STORAGE_PER_PERCEPTRON) 
 
