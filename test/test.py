@@ -18,6 +18,9 @@ STORAGE_B = 64
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
+GATES_MODE = (os.getenv("GL_SIM") == "yes")
+print(f"Running gate-level simulation: {GATES_MODE}")
+
 #----- HELPERS -----#
 async def reset(dut, wait_for_mem_reset_done=True):
     dut.rst_n.value = 0
@@ -95,13 +98,13 @@ async def check_weights(dut, starting_addr, weights):
     dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
 
 # ----- TESTS -----#
-@cocotb.test()
+@cocotb.test(skip=False)
 async def test_constants(dut):
     start_clock(dut)
     await RisingEdge(dut.clk)
     assert dut.uio_oe.value == 0 # All bidirectional pins should be in input mode
 
-@cocotb.test()
+@cocotb.test(skip=False)
 async def test_new_data_avail_signals(dut):
     start_clock(dut)
     await reset(dut)
@@ -116,7 +119,7 @@ async def test_new_data_avail_signals(dut):
     await RisingEdge(dut.clk)
     assert dut.branch_pred.new_data_avail_prev.value == 0
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_send_data(dut):
     NUM_TESTS = 100
     random.seed(42)
@@ -131,7 +134,7 @@ async def test_send_data(dut):
         assert dut.branch_pred.direction_ground_truth.value == direction
         assert dut.branch_pred.inst_addr.value == addr
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_perceptron_index(dut):
     NUM_TESTS = 100
     random.seed(42)
@@ -145,7 +148,7 @@ async def test_perceptron_index(dut):
         await send_data(dut, addr, direction)
         assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == ((addr >> 2) % NUM_PERCEPTRONS)
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_history_buffer(dut):
     NUM_TESTS = -1
     random.seed(42)
@@ -167,7 +170,7 @@ async def test_history_buffer(dut):
         await RisingEdge(dut.clk)
         assert dut.branch_pred.history_buffer.value == int(binary_str, base=2)
 
-@cocotb.test()
+@cocotb.test(skip=False)
 async def test_perceptron_all_registers(dut):
     MAX_NUM_TESTS = 300
     cnt = 0
@@ -191,13 +194,15 @@ async def test_perceptron_all_registers(dut):
             direction = result['taken']
             await send_data(dut, addr=addr, direction=direction)
 
-            assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == result['hash_index'] # Check index
-            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr'] # Check memory addr
+            if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
+                assert int(f"{dut.branch_pred.perceptron_index.value}", base=2) == result['hash_index'] # Check index
+                assert int(f"{dut.branch_pred.mem_addr.value}", base=2) == result['start_addr'] # Check memory addr
 
             while (dut.pred_ready.value != 1):
                 await RisingEdge(dut.clk)
             assert dut.prediction.value == result['prediction']
-            assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
+            if (not GATES_MODE): # Internal signals unavailable in gate-level simulation
+                assert twos_complement_to_int(f"{dut.branch_pred.sum.value}", len(dut.branch_pred.sum.value)) == result['y']
 
             while (dut.training_done.value != 1):
                 await RisingEdge(dut.clk)
@@ -209,7 +214,7 @@ async def test_perceptron_all_registers(dut):
             if (MAX_NUM_TESTS != -1) and (cnt >= MAX_NUM_TESTS):
                 break
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_new_data_avail_posedge_only(dut):
     # Test that the predictor only works on the posedge of the new data avail. signal
     start_clock(dut)
@@ -220,7 +225,7 @@ async def test_new_data_avail_posedge_only(dut):
     await RisingEdge(dut.clk)
     assert dut.branch_pred.state_pred.value == 1 # Still in computing state
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_new_data_ignored_if_training(dut):
     # Test that new data is ignored if the predictor is training
     start_clock(dut)
@@ -242,7 +247,7 @@ async def test_new_data_ignored_if_training(dut):
     await RisingEdge(dut.clk)
     assert dut.branch_pred.history_buffer.value == 1 # History buffer did not capture the second data
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_reset_memory(dut):
     start_clock(dut)
     await reset(dut)
@@ -272,7 +277,7 @@ async def test_reset_memory(dut):
         await RisingEdge(dut.clk)
         assert dut.branch_pred.mem_data_out.value == 0
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_data_ignored_while_resetting(dut):
     start_clock(dut)
     await reset(dut, wait_for_mem_reset_done=False)
@@ -289,7 +294,7 @@ async def test_data_ignored_while_resetting(dut):
     await RisingEdge(dut.clk)
     assert dut.branch_pred.state_pred.value == 1 # Transition to computing state
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_new_data_after_mem_rst(dut):
     start_clock(dut)
     await reset(dut, wait_for_mem_reset_done=True)
@@ -299,7 +304,7 @@ async def test_new_data_after_mem_rst(dut):
     await RisingEdge(dut.clk)
     assert dut.branch_pred.state_pred.value == 1 # In computing state
 
-@cocotb.test()
+@cocotb.test(skip=GATES_MODE)
 async def test_back_to_back_inference(dut):
     start_clock(dut)
     await reset(dut, wait_for_mem_reset_done=True)

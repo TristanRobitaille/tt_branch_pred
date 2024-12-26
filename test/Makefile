@@ -7,8 +7,9 @@ TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = tt06-memory/src/latch_memory.v branch_pred.v
 
-ifneq ($(GATES),yes)
 
+ifneq ($(GATES),yes)
+export GL_SIM ?= no
 # RTL simulation:
 SIM_BUILD		 = sim_build/rtl
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
@@ -16,8 +17,8 @@ COMPILE_ARGS 	+= -I$(SRC_DIR)
 COMPILE_ARGS    += -DSIM
 
 else
-
 # Gate level simulation:
+export GL_SIM ?= yes
 SIM_BUILD		 = sim_build/gl
 COMPILE_ARGS    += -DGL_TEST
 COMPILE_ARGS    += -DFUNCTIONAL
