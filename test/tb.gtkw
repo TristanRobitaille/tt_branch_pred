@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Thu Dec 26 23:24:25 2024
+[*] Fri Dec 27 09:32:43 2024
 [*]
 [dumpfile] "/Users/tristan/Developer/tt_branch_pred/test/tb.vcd"
-[dumpfile_mtime] "Thu Dec 26 23:21:55 2024"
-[dumpfile_size] 6425812
+[dumpfile_mtime] "Fri Dec 27 09:26:16 2024"
+[dumpfile_size] 559079
 [savefile] "/Users/tristan/Developer/tt_branch_pred/test/tb.gtkw"
-[timestart] 2663800000
-[size] 3440 1387
-[pos] -1 -1
-*-26.400000 2404300000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+[timestart] 600263000
+[size] 1888 1387
+[pos] 1563 0
+*-19.199999 602400001 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 [markername] AA
 [markername] BB
 [markername] CC
@@ -41,7 +41,7 @@
 [sst_width] 253
 [signals_width] 343
 [sst_expanded] 1
-[sst_vpaned_height] 334
+[sst_vpaned_height] 912
 @28
 tb.clk
 tb.branch_pred.rst_n
@@ -88,8 +88,21 @@ tb.branch_pred.direction_ground_truth
 -Perceptron
 @28
 tb.branch_pred.prediction
-@420
+@800420
 tb.branch_pred.sum[9:0]
+@28
+(0)tb.branch_pred.sum[9:0]
+(1)tb.branch_pred.sum[9:0]
+(2)tb.branch_pred.sum[9:0]
+(3)tb.branch_pred.sum[9:0]
+(4)tb.branch_pred.sum[9:0]
+(5)tb.branch_pred.sum[9:0]
+(6)tb.branch_pred.sum[9:0]
+(7)tb.branch_pred.sum[9:0]
+(8)tb.branch_pred.sum[9:0]
+(9)tb.branch_pred.sum[9:0]
+@1001200
+-group_end
 @24
 tb.branch_pred.cnt[3:0]
 @c00028
@@ -145,8 +158,6 @@ tb.DEBUG_new_data_avail_posedge
 tb.DEBUG_state_pred[1:0]
 tb.DEBUG_wr_en
 @200
--
-@20000
 -
 [pattern_trace] 1
 [pattern_trace] 0

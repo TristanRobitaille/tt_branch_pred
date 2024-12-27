@@ -86,7 +86,6 @@ module tt_um_branch_pred #(
     reg [SUM_WIDTH-1:0] sum;
     reg [HISTORY_LENGTH:0] history_buffer;
     reg [MEM_ADDR_WIDTH-1:0] mem_addr;
-    wire [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
     parameter NOT_RESETTING_MEM = 1'd0, RESETTING_MEMORY = 1'd1;
     parameter IDLE = 2'd0, COMPUTING = 2'd1, PRE_TRAINING_DELAY = 2'd2, TRAINING = 2'd3;
 
@@ -104,14 +103,16 @@ module tt_um_branch_pred #(
     // Hash index
     // Implements (addr >> 2) % (NUM_PERCEPTRONS - 1)
     // Only valid if NUM_PERCEPTRONS is 12
+    wire [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index, hash_index;
     wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
-    assign perceptron_index =
+    assign hash_index =
         (addr_shifted >= 55) ? addr_shifted - 55 :
         (addr_shifted >= 44) ? addr_shifted - 44 :
         (addr_shifted >= 33) ? addr_shifted - 33 :
         (addr_shifted >= 22) ? addr_shifted - 22 :
         (addr_shifted >= 11) ? addr_shifted - 11 :
         addr_shifted;
+    assign perceptron_index = hash_index[PERCEPTRON_INDEX_WIDTH-1:0];
 
     always @ (posedge clk) begin
         if (!rst_n) begin
@@ -127,7 +128,7 @@ module tt_um_branch_pred #(
     wire signed [SUM_WIDTH-1:0] abs_sum;
     assign abs_sum = sum[SUM_WIDTH-1] ? (~sum + 1) : sum;
 
-    reg [1:0] substate;
+    reg [2:0] substate;
 
     always @ (posedge clk) begin
         if (!rst_n) begin
@@ -196,28 +197,66 @@ module tt_um_branch_pred #(
                         state_pred <= TRAINING;
                         pred_ready <= 1'b0;
                     end
+                    // TRAINING: begin
+                    //     if (substate == 0) begin // Write
+                    //         if (cnt == 'd0) begin
+                    //             mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
+                    //             substate <= 1;
+                    //             wr_en <= 1'b1;
+                    //         end else if (cnt < HISTORY_LENGTH+1) begin
+                    //             mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1); // If agreement, increment the weight, else decrement
+                    //             substate <= 1;
+                    //             wr_en <= 1'b1;
+                    //         end else begin
+                    //             state_pred <= IDLE;
+                    //             training_done <= 1'b1;
+                    //         end
+                    //     end else if (substate == 1) begin
+                    //         substate <= 2;
+                    //     end else if (substate == 2) begin // Read
+                    //         if (cnt < HISTORY_LENGTH) mem_addr <= mem_addr + 1;
+                    //         wr_en <= 1'b0;
+                    //         cnt <= cnt + 1;
+                    //         substate <= 3;
+                    //     end else if (substate == 3) begin
+                    //         substate <= 0;
+                    //     end
+                    // end
                     TRAINING: begin
-                        if (substate == 0) begin // Write
-                            if (cnt == 'd0) begin
-                                mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
-                                substate <= 1;
-                                wr_en <= 1'b1;
-                            end else if (cnt < HISTORY_LENGTH+1) begin
-                                mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1); // If agreement, increment the weight, else decrement
-                                substate <= 1;
-                                wr_en <= 1'b1;
-                            end else begin
+                        if (substate == 0) begin // Setup Read for data
+                            wr_en <= 1'b0;
+                            if (cnt > HISTORY_LENGTH) begin
                                 state_pred <= IDLE;
                                 training_done <= 1'b1;
+                            end else begin
+                                substate <= 1;
                             end
-                        end else if (substate == 1) begin
+                        end
+                        else if (substate == 1) begin // Wait for read data to be valid
                             substate <= 2;
-                        end else if (substate == 2) begin // Read
-                            if (cnt < HISTORY_LENGTH) mem_addr <= mem_addr + 1;
-                            wr_en <= 1'b0;
-                            cnt <= cnt + 1;
+                        end
+                        else if (substate == 2) begin // Setup Write
+                            if (cnt == 'd0) begin
+                                mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
+                            end else begin
+                                mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? 
+                                            (mem_data_out + 1) : (mem_data_out - 1);
+                            end
+                            wr_en <= 1'b1;
                             substate <= 3;
-                        end else if (substate == 3) begin
+                        end
+                        else if (substate == 3) begin // Hold Write
+                            wr_en <= 1'b0;
+                            substate <= 4;
+                        end
+                        else if (substate == 4) begin // Wait for write to complete
+                            substate <= 5;
+                        end
+                        else if (substate == 5) begin // Update address for next iteration
+                            if (cnt < HISTORY_LENGTH) begin
+                                mem_addr <= mem_addr + 1;
+                            end
+                            cnt <= cnt + 1;
                             substate <= 0;
                         end
                     end
