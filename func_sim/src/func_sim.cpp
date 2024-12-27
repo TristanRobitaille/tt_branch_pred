@@ -81,9 +81,29 @@ BranchPredictor::BranchPredictor() : perceptrons(NUM_PERCEPTRONS), global_histor
 }
 
 uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
-    uint32_t hash = ((branch_address >> 2) & 0xFF) ^
-                    ((branch_address >> 4) & 0xFF);
-    return hash & (NUM_PERCEPTRONS - 1);
+    if (NUM_PERCEPTRONS != 12) {
+        cerr << "NUM_PERCEPTRONS must be 12 for current hashing function." << endl;
+        exit(1);
+    }
+
+    // Modulo easy to do in hardware
+    uint32_t n = (branch_address >> 2);
+
+    uint32_t mod_res = (n % (NUM_PERCEPTRONS-1));
+    uint32_t mod_res_sim;
+
+    if (n >= 55)      mod_res_sim = n - 55;
+    else if (n >= 44) mod_res_sim = n - 44;
+    else if (n >= 33) mod_res_sim = n - 33;
+    else if (n >= 22) mod_res_sim = n - 22;
+    else if (n >= 11) mod_res_sim = n - 11;
+    else              mod_res_sim = n;
+
+    if (mod_res != mod_res_sim) {
+        cout << "Hash mismatch: " << dec << mod_res << " != " << mod_res_sim << endl;
+        exit(1);
+    }
+    return mod_res_sim;
 }
 
 void BranchPredictor::predict(uint32_t branch_address, bool* pred, int* y_sum, int* hash_index) {
@@ -165,7 +185,7 @@ int main(int argc, char** argv) {
 
     // Determine branch outcomes and use the branch predictor
     for (size_t i = 0; i < branch_addresses.size() - 1; ++i) {
-        uint32_t current_branch_addr = branch_addresses[i];
+        uint32_t current_branch_addr = branch_addresses[i]; // We only receive the lower 8 bits of the address in the hardware
         uint32_t next_branch_addr = branch_addresses[i + 1];
         uint32_t instruction = instructions[i];
 
@@ -177,10 +197,11 @@ int main(int argc, char** argv) {
             bool prediction = false;
             int y = 0;
             int hash_index;
-            branch_predictor.predict(current_branch_addr, &prediction, &y, &hash_index);
+            uint32_t current_branch_addr_8b = current_branch_addr & 0xFF;
+            branch_predictor.predict(current_branch_addr_8b, &prediction, &y, &hash_index);
 
             // Update the branch predictor with the actual outcome
-            bool trained = branch_predictor.update(current_branch_addr, branch_taken);
+            bool trained = branch_predictor.update(current_branch_addr_8b, branch_taken);
 
             string weights = branch_predictor.get_perceptron_weights(hash_index);
 

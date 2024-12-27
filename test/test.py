@@ -145,8 +145,7 @@ async def test_send_data(dut):
 @cocotb.test(skip=False)
 async def test_perceptron_index(dut):
     def hash_fcn(addr):
-        hash_val = ((addr >> 2) & 0xFF) ^ ((addr >> 4) & 0xFF)
-        return hash_val & int(NUM_PERCEPTRONS - 1)
+        return (addr >> 2) % (NUM_PERCEPTRONS - 1)
 
     NUM_TESTS = 100
     random.seed(42)

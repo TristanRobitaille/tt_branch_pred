@@ -9,7 +9,7 @@ Some details:
 * 96B of memory for perceptron weights (8b each)
 * History length: 8
 * Number of perceptrons: 12
-* ~87% accuracy on a small reference program (`func_sim/reference.c`)
+* ~88% accuracy on a small reference program (`func_sim/reference.c`)
 * Implements automatic memory reset to guarantee a clean state
 
 ## What is Tiny Tapeout?

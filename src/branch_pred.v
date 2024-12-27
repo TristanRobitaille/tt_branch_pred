@@ -52,7 +52,7 @@ module tt_um_branch_pred #(
 
     // List all unused inputs to prevent warnings
     wire [7:0] uio_oe_mem_unused, uio_out_unused;
-    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2], hash_index[31:PERCEPTRON_INDEX_WIDTH]};
+    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2]};
 
     wire new_data_avail, new_data_avail_posedge;
     wire direction_ground_truth;
@@ -101,9 +101,17 @@ module tt_um_branch_pred #(
         .uio_oe(uio_oe_mem_unused) // Unused
     );
 
-    wire [31:0] hash_index;
-    assign hash_index = (({{24'b0, inst_addr}} >> 2) ^ ({{24'b0, inst_addr}} >> 4)) & (NUM_PERCEPTRONS - 1);
-    assign perceptron_index = hash_index[PERCEPTRON_INDEX_WIDTH-1:0];
+    // Hash index
+    // Implements (addr >> 2) % (NUM_PERCEPTRONS - 1)
+    // Only valid if NUM_PERCEPTRONS is 12
+    wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
+    assign perceptron_index =
+        (addr_shifted >= 55) ? addr_shifted - 55 :
+        (addr_shifted >= 44) ? addr_shifted - 44 :
+        (addr_shifted >= 33) ? addr_shifted - 33 :
+        (addr_shifted >= 22) ? addr_shifted - 22 :
+        (addr_shifted >= 11) ? addr_shifted - 11 :
+        addr_shifted;
 
     always @ (posedge clk) begin
         if (!rst_n) begin
