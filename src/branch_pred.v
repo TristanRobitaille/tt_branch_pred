@@ -222,46 +222,47 @@ module tt_um_branch_pred #(
                     //         substate <= 0;
                     //     end
                     // end
+
                     TRAINING: begin
-                        if (substate == 0) begin // Setup Read for data
-                            wr_en <= 1'b0;
-                            if (cnt > HISTORY_LENGTH) begin
-                                state_pred <= IDLE;
-                                training_done <= 1'b1;
-                            end else begin
-                                substate <= 1;
-                            end
-                        end
-                        else if (substate == 1) begin // Wait for read data to be valid
-                            substate <= 2;
-                        end
-                        else if (substate == 2) begin // Setup Write
+                        if (substate == 0) begin // Write
                             if (cnt == 'd0) begin
                                 mem_data_in <= (direction_ground_truth) ? (mem_data_out + 1) : (mem_data_out - 1);
-                            end else begin
+                                substate <= 1;
+                                wr_en <= 1'b1;
+                            end else if (cnt < HISTORY_LENGTH+1) begin
                                 mem_data_in <= (history_buffer[cnt-1] == direction_ground_truth) ? 
                                             (mem_data_out + 1) : (mem_data_out - 1);
+                                substate <= 1;
+                                wr_en <= 1'b1;
+                            end else begin
+                                state_pred <= IDLE;
+                                training_done <= 1'b1;
+                                mem_data_in <= mem_data_out; // Maintain last value
                             end
-                            wr_en <= 1'b1;
-                            substate <= 3;
-                        end
-                        else if (substate == 3) begin // Hold Write
-                            wr_en <= 1'b0;
-                            substate <= 4;
-                        end
-                        else if (substate == 4) begin // Wait for write to complete
-                            substate <= 5;
-                        end
-                        else if (substate == 5) begin // Update address for next iteration
+                        end 
+                        else if (substate == 1) begin
+                            substate <= 2;
+                            wr_en <= wr_en; // Maintain write enable
+                        end 
+                        else if (substate == 2) begin // Read
                             if (cnt < HISTORY_LENGTH) begin
                                 mem_addr <= mem_addr + 1;
                             end
+                            wr_en <= 1'b0;
                             cnt <= cnt + 1;
+                            substate <= 3;
+                        end 
+                        else if (substate == 3) begin
                             substate <= 0;
+                            wr_en <= 1'b0; // Ensure write disable maintains
+                        end
+                        else begin // Default case for undefined substates
+                            substate <= 0;
+                            wr_en <= 1'b0;
                         end
                     end
                     default:
-                        state_pred <= IDLE;
+                    state_pred <= IDLE;
                 endcase
             end
         end
