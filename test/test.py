@@ -14,14 +14,14 @@ from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8
 HISTORY_LENGTH = 7
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
-STORAGE_B = 88
+STORAGE_B = 104
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
 GATES_MODE = (os.getenv("GL_SIM") == "yes")
 print(f"Running gate-level simulation: {GATES_MODE}")
 
-CLK_FREQ_MHZ = 10
+CLK_FREQ_MHZ = 50
 ONE_THOUSAND_CLK_CYCLES = 1000 * (1 / CLK_FREQ_MHZ)
 
 #----- HELPERS -----#

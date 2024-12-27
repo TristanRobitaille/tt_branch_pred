@@ -9,7 +9,7 @@ module tt_um_branch_pred #(
     parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8,
     parameter HISTORY_LENGTH = 7, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
-    parameter STORAGE_B = 88, // If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter STORAGE_B = 104, // If larger than 2^7, will need to modify memory since max. address is 7 bits
     parameter MEM_ADDR_WIDTH = $clog2(STORAGE_B),
     parameter STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS),
     parameter NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON),
@@ -103,15 +103,14 @@ module tt_um_branch_pred #(
 
     // Hash index
     // Implements (addr >> 2) % (NUM_PERCEPTRONS - 1)
-    // Only valid if NUM_PERCEPTRONS is 11
+    // Only valid if NUM_PERCEPTRONS is 13
     wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
     assign perceptron_index =
         (addr_shifted >= 60) ? addr_shifted - 60 :
-        (addr_shifted >= 50) ? addr_shifted - 50 :
-        (addr_shifted >= 40) ? addr_shifted - 40 :
-        (addr_shifted >= 30) ? addr_shifted - 30 :
-        (addr_shifted >= 20) ? addr_shifted - 20 :
-        (addr_shifted >= 10) ? addr_shifted - 10 :
+        (addr_shifted >= 48) ? addr_shifted - 48 :
+        (addr_shifted >= 36) ? addr_shifted - 36 :
+        (addr_shifted >= 24) ? addr_shifted - 24 :
+        (addr_shifted >= 12) ? addr_shifted - 12 :
         addr_shifted;
 
     always @ (posedge clk) begin
