@@ -90,13 +90,12 @@ module tt_um_branch_pred #(
     reg [MEM_ADDR_WIDTH-1:0] mem_addr;
     wire [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
     wire [$clog2(64)-1:0] mem_addr_lower;
-    wire [$clog2(STORAGE_B-64)-1:0] mem_addr_upper;
+    wire [31:0] mem_addr_upper;
     wire [7:0] mem_data_out;
     parameter NOT_RESETTING_MEM = 1'd0, RESETTING_MEMORY = 1'd1;
     parameter IDLE = 2'd0, COMPUTING = 2'd1, PRE_TRAINING_DELAY = 2'd2, TRAINING = 2'd3;
 
-    assign mem_addr_lower = mem_addr[$clog2(64)-1:0];
-    assign mem_addr_upper = mem_addr - 64;
+    assign mem_addr_upper = {{(32-MEM_ADDR_WIDTH){1'b0}}, mem_addr} - 32'd64;
 
     wire wr_en_upper, wr_en_lower;
     assign wr_en_lower = wr_en & (mem_addr < 64);
@@ -106,7 +105,7 @@ module tt_um_branch_pred #(
     tt_um_MichaelBell_latch_mem #(
         .RAM_BYTES(64)
     ) latch_mem_lower (
-        .ui_in({wr_en_lower, 1'b0, mem_addr_lower}), // [wr_en|padding|addr]
+        .ui_in({wr_en_lower, 1'b0, mem_addr[$clog2(64)-1:0]}), // [wr_en|padding|addr]
         .uo_out(mem_data_out_lower), // Data output (8b)
         .uio_in(mem_data_in), // Data input (8b)
         .ena(ena), .clk(clk), .rst_n(rst_n),
@@ -117,7 +116,7 @@ module tt_um_branch_pred #(
     tt_um_MichaelBell_latch_mem #(
         .RAM_BYTES(STORAGE_B-64)
     ) latch_mem_upper (
-        .ui_in({wr_en_upper, {(7-$clog2(STORAGE_B-64)){1'b0}}, mem_addr_upper}), // [wr_en|padding|addr]
+        .ui_in({wr_en_upper, {(7-$clog2(STORAGE_B-64)){1'b0}}, mem_addr_upper[$clog2(STORAGE_B-64)-1:0]}), // [wr_en|padding|addr]
         .uo_out(mem_data_out_upper), // Data output (8b)
         .uio_in(mem_data_in), // Data input (8b)
         .ena(ena), .clk(clk), .rst_n(rst_n),
@@ -128,14 +127,16 @@ module tt_um_branch_pred #(
     // Hash index
     // Implements (addr >> 2) % (NUM_PERCEPTRONS - 1)
     // Only valid if NUM_PERCEPTRONS is 13
+    wire [31:0] hash_index;
     wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
-    assign perceptron_index =
+    assign hash_index =
         (addr_shifted >= 55) ? addr_shifted - 55 :
         (addr_shifted >= 44) ? addr_shifted - 44 :
         (addr_shifted >= 33) ? addr_shifted - 33 :
         (addr_shifted >= 22) ? addr_shifted - 22 :
         (addr_shifted >= 11) ? addr_shifted - 11 :
         addr_shifted;
+    assign perceptron_index = hash_index[PERCEPTRON_INDEX_WIDTH-1:0];
 
     always @ (posedge clk) begin
         if (!rst_n) begin
