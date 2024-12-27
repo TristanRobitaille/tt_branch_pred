@@ -14,7 +14,7 @@ from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
 NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8
 HISTORY_LENGTH = 7
 BIT_WIDTH_WEIGHTS = 8 # Must be 2, 4 or 8
-STORAGE_B = 104
+STORAGE_B = 96
 STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS)
 NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON)
 
@@ -87,7 +87,8 @@ def twos_complement_to_int(binary_str, width):
 async def check_weights(dut, starting_addr, weights):
     initial_wr_en = dut.DEBUG_wr_en.value
     initial_mem_addr = dut.branch_pred.mem_addr.value
-    initial_uio_in = dut.branch_pred.latch_mem.uio_in.value
+    initial_uio_in_lower = dut.branch_pred.latch_mem_lower.uio_in.value
+    initial_uio_in_upper = dut.branch_pred.latch_mem_upper.uio_in.value
     await RisingEdge(dut.clk)
 
     for i in range(len(weights)):
@@ -99,14 +100,25 @@ async def check_weights(dut, starting_addr, weights):
 
     dut.DEBUG_wr_en.value = initial_wr_en
     dut.branch_pred.mem_addr.value = initial_mem_addr
-    dut.branch_pred.latch_mem.uio_in.value = initial_uio_in
+    dut.branch_pred.latch_mem_lower.uio_in.value = initial_uio_in_lower
+    dut.branch_pred.latch_mem_upper.uio_in.value = initial_uio_in_upper
 
 async def monitor_mem_addr(dut):
     """Monitor memory address to ensure it stays within bounds"""
     while True:
         await RisingEdge(dut.clk)
-        if not GATES_MODE:  # Only check when not in reset
-            assert int(f"{dut.branch_pred.mem_addr.value}", base=2) < STORAGE_B
+        assert int(f"{dut.branch_pred.mem_addr.value}", base=2) < STORAGE_B
+
+async def monitor_mem_selection(dut):
+    """Monitor memory address to ensure it stays within bounds"""
+    while True:
+        await RisingEdge(dut.clk)
+        if (int(f"{dut.branch_pred.mem_addr.value}", base=2) >= 64): # Upper memory should be active
+            assert dut.branch_pred.wr_en_lower.value == 0
+            assert dut.branch_pred.mem_data_out.value == dut.branch_pred.mem_data_out_upper.value
+        else: # Lower memory should be active
+            assert dut.branch_pred.wr_en_upper.value == 0
+            assert dut.branch_pred.mem_data_out.value == dut.branch_pred.mem_data_out_lower.value
 
 # ----- TESTS -----#
 @cocotb.test(skip=False)
@@ -223,8 +235,9 @@ async def test_perceptron_all_registers(dut):
     start_clock(dut)
     await reset(dut)
 
-    # Start memory address monitor
-    monitor = cocotb.start_soon(monitor_mem_addr(dut))
+    if not GATES_MODE:
+        mem_addr_monitor = cocotb.start_soon(monitor_mem_addr(dut)) # Start memory address monitor
+        mem_sel_monitor = cocotb.start_soon(monitor_mem_selection(dut)) # Start memory selection monitor
 
     cnt = 0
     for line in stdout[0].splitlines():
@@ -302,7 +315,7 @@ async def test_new_data_ignored_if_training(dut):
     if (not GATES_MODE):
         assert dut.branch_pred.history_buffer.value == 1 # History buffer did not capture the second data
 
-@cocotb.test(skip=True)
+@cocotb.test(skip=False)
 async def test_reset_memory(dut):
     start_clock(dut)
     await reset(dut)

@@ -9,7 +9,7 @@ module tt_um_branch_pred #(
     parameter NUM_BITS_OF_INST_ADDR_LATCHED_IN = 8,
     parameter HISTORY_LENGTH = 7, // Must be a power of 2 - 1 (so we can bit shift, else need to see how large a multiplier would be)
     parameter BIT_WIDTH_WEIGHTS = 8, // Must be 2, 4 or 8
-    parameter STORAGE_B = 104, // If larger than 2^7, will need to modify memory since max. address is 7 bits
+    parameter STORAGE_B = 96, // If larger than 2^7, will need to modify memory since max. address is 7 bits
     parameter MEM_ADDR_WIDTH = $clog2(STORAGE_B),
     parameter STORAGE_PER_PERCEPTRON = ((HISTORY_LENGTH + 1) * BIT_WIDTH_WEIGHTS),
     parameter NUM_PERCEPTRONS = (8 * STORAGE_B / STORAGE_PER_PERCEPTRON),
@@ -51,8 +51,9 @@ module tt_um_branch_pred #(
     assign uo_out[7] = wr_en;
 
     // List all unused inputs to prevent warnings
-    wire [7:0] uio_oe_mem_unused, uio_out_unused;
-    wire _unused = &{ena, clk, rst_n, uio_oe_mem_unused, uio_out_unused, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2]};
+    wire [7:0] uio_oe_mem_unused_lower, uio_out_unused_lower, uio_oe_mem_unused_upper, uio_out_unused_upper;
+    wire _unused = &{ena, clk, rst_n, 1'b0, uio_in[7:2], inst_addr[1:0], inst_addr[7:7-PERCEPTRON_INDEX_WIDTH+2],
+                     uio_oe_mem_unused_lower, uio_out_unused_lower, uio_oe_mem_unused_upper, uio_out_unused_upper};
 
     wire new_data_avail, new_data_avail_posedge;
     wire direction_ground_truth;
@@ -75,30 +76,53 @@ module tt_um_branch_pred #(
     /*
         The prediction is given by the sign of the sum of the weights multiplied by the history buffer.
         The starting index (byte) of the weights for a perceptron is given by: (HISTORY_LENGTH + 1) * perceptron_index * (BIT_WIDTH_WEIGHTS/8)
+        Note: I was having issues getting memory larger than 64B at the gate-level simulations, so I had to split it into two banks. 
     */
 
     reg wr_en; // 0: Read, 1: Write
     reg prediction, pred_ready, training_done;
     reg state_rst_memory, mem_reset_done;
     reg [1:0] state_pred;
-    reg [7:0] mem_data_in, mem_data_out;
+    reg [7:0] mem_data_in, mem_data_out_lower, mem_data_out_upper;
     reg [$clog2(HISTORY_LENGTH+1+1)-1:0] cnt;
     reg [SUM_WIDTH-1:0] sum;
     reg [HISTORY_LENGTH:0] history_buffer;
     reg [MEM_ADDR_WIDTH-1:0] mem_addr;
     wire [PERCEPTRON_INDEX_WIDTH-1:0] perceptron_index;
+    wire [$clog2(64)-1:0] mem_addr_lower;
+    wire [$clog2(STORAGE_B-64)-1:0] mem_addr_upper;
+    wire [7:0] mem_data_out;
     parameter NOT_RESETTING_MEM = 1'd0, RESETTING_MEMORY = 1'd1;
     parameter IDLE = 2'd0, COMPUTING = 2'd1, PRE_TRAINING_DELAY = 2'd2, TRAINING = 2'd3;
 
+    assign mem_addr_lower = mem_addr[$clog2(64)-1:0];
+    assign mem_addr_upper = mem_addr - 64;
+
+    wire wr_en_upper, wr_en_lower;
+    assign wr_en_lower = wr_en & (mem_addr < 64);
+    assign wr_en_upper = wr_en & (mem_addr >= 64);
+    assign mem_data_out = (mem_addr < 64) ? mem_data_out_lower : mem_data_out_upper;
+
     tt_um_MichaelBell_latch_mem #(
-        .RAM_BYTES(STORAGE_B)
-    ) latch_mem (
-        .ui_in({wr_en, {(7-MEM_ADDR_WIDTH){1'b0}}, mem_addr}), // [wr_en|padding|addr]
-        .uo_out(mem_data_out), // Data output (8b)
-        .uio_in(mem_data_in),  // Data input (8b)
+        .RAM_BYTES(64)
+    ) latch_mem_lower (
+        .ui_in({wr_en_lower, 1'b0, mem_addr_lower}), // [wr_en|padding|addr]
+        .uo_out(mem_data_out_lower), // Data output (8b)
+        .uio_in(mem_data_in), // Data input (8b)
         .ena(ena), .clk(clk), .rst_n(rst_n),
-        .uio_out(uio_out_unused), // Unused
-        .uio_oe(uio_oe_mem_unused) // Unused
+        .uio_out(uio_out_unused_lower), // Unused
+        .uio_oe(uio_oe_mem_unused_lower) // Unused
+    );
+
+    tt_um_MichaelBell_latch_mem #(
+        .RAM_BYTES(STORAGE_B-64)
+    ) latch_mem_upper (
+        .ui_in({wr_en_upper, {(7-$clog2(STORAGE_B-64)){1'b0}}, mem_addr_upper}), // [wr_en|padding|addr]
+        .uo_out(mem_data_out_upper), // Data output (8b)
+        .uio_in(mem_data_in), // Data input (8b)
+        .ena(ena), .clk(clk), .rst_n(rst_n),
+        .uio_out(uio_out_unused_upper), // Unused
+        .uio_oe(uio_oe_mem_unused_upper) // Unused
     );
 
     // Hash index
@@ -106,11 +130,11 @@ module tt_um_branch_pred #(
     // Only valid if NUM_PERCEPTRONS is 13
     wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
     assign perceptron_index =
-        (addr_shifted >= 60) ? addr_shifted - 60 :
-        (addr_shifted >= 48) ? addr_shifted - 48 :
-        (addr_shifted >= 36) ? addr_shifted - 36 :
-        (addr_shifted >= 24) ? addr_shifted - 24 :
-        (addr_shifted >= 12) ? addr_shifted - 12 :
+        (addr_shifted >= 55) ? addr_shifted - 55 :
+        (addr_shifted >= 44) ? addr_shifted - 44 :
+        (addr_shifted >= 33) ? addr_shifted - 33 :
+        (addr_shifted >= 22) ? addr_shifted - 22 :
+        (addr_shifted >= 11) ? addr_shifted - 11 :
         addr_shifted;
 
     always @ (posedge clk) begin

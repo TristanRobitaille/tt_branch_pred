@@ -81,8 +81,8 @@ BranchPredictor::BranchPredictor() : perceptrons(NUM_PERCEPTRONS), global_histor
 }
 
 uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
-    if (NUM_PERCEPTRONS != 13) {
-        cerr << "NUM_PERCEPTRONS must be 13 for current hashing function." << endl;
+    if (NUM_PERCEPTRONS != 12) {
+        cerr << "NUM_PERCEPTRONS must be 12 for current hashing function." << endl;
         exit(1);
     }
 
@@ -91,11 +91,11 @@ uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
     uint32_t mod_res = (n % (NUM_PERCEPTRONS-1));
     uint32_t mod_res_sim;
 
-    if (n >= 60) mod_res_sim = n - 60;
-    else if (n >= 48) mod_res_sim = n - 48;
-    else if (n >= 36) mod_res_sim = n - 36;
-    else if (n >= 24) mod_res_sim = n - 24;
-    else if (n >= 12) mod_res_sim = n - 12;
+    if (n >= 55) mod_res_sim = n - 55;
+    else if (n >= 44) mod_res_sim = n - 44;
+    else if (n >= 33) mod_res_sim = n - 33;
+    else if (n >= 22) mod_res_sim = n - 22;
+    else if (n >= 11) mod_res_sim = n - 11;
     else              mod_res_sim = n;
 
     if (mod_res != mod_res_sim) {
