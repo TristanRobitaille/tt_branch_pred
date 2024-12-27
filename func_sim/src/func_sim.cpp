@@ -89,14 +89,14 @@ uint32_t BranchPredictor::branch_address_hash(uint32_t branch_address) {
     // Modulo easy to do in hardware
     uint32_t n = (branch_address >> 2);
 
-    uint32_t mod_res = (n % (NUM_PERCEPTRONS-1));
+    uint32_t mod_res = (n % NUM_PERCEPTRONS);
     uint32_t mod_res_sim;
 
-    if (n >= 55)      mod_res_sim = n - 55;
-    else if (n >= 44) mod_res_sim = n - 44;
-    else if (n >= 33) mod_res_sim = n - 33;
-    else if (n >= 22) mod_res_sim = n - 22;
-    else if (n >= 11) mod_res_sim = n - 11;
+    if (n >= 60)      mod_res_sim = n - 60;
+    else if (n >= 48) mod_res_sim = n - 48;
+    else if (n >= 36) mod_res_sim = n - 36;
+    else if (n >= 24) mod_res_sim = n - 24;
+    else if (n >= 12) mod_res_sim = n - 12;
     else              mod_res_sim = n;
 
     if (mod_res != mod_res_sim) {

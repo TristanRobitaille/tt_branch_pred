@@ -106,11 +106,11 @@ module tt_um_branch_pred #(
     // Only valid if NUM_PERCEPTRONS is 12
     wire [31:0] addr_shifted = {{24'b0, inst_addr}} >> 2;
     assign perceptron_index =
-        (addr_shifted >= 55) ? addr_shifted - 55 :
-        (addr_shifted >= 44) ? addr_shifted - 44 :
-        (addr_shifted >= 33) ? addr_shifted - 33 :
-        (addr_shifted >= 22) ? addr_shifted - 22 :
-        (addr_shifted >= 11) ? addr_shifted - 11 :
+        (addr_shifted >= 60) ? addr_shifted - 60 :
+        (addr_shifted >= 48) ? addr_shifted - 48 :
+        (addr_shifted >= 36) ? addr_shifted - 36 :
+        (addr_shifted >= 24) ? addr_shifted - 24 :
+        (addr_shifted >= 12) ? addr_shifted - 12 :
         addr_shifted;
 
     always @ (posedge clk) begin
